@@ -305,6 +305,8 @@ The current flow has been validated with a full MCP-only ResCNN smoke:
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): recovery guidance
 - [docs/API_CONVENTIONS.md](docs/API_CONVENTIONS.md): schema and result conventions
 
+Thanks to the linux.do laoyou for their support. "Laoyou" is the community's own friendly term for respected peers.
+
 ## Privacy Notes
 
 The README uses placeholders such as `<path-to-colab_mcp>` and does not include local usernames, personal checkout paths, tokens, or runtime artifacts. Generated training artifacts should stay under `artifacts/`, which is ignored by git.

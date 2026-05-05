@@ -305,6 +305,4 @@ uv run python -m compileall src
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): 故障排查
 - [docs/API_CONVENTIONS.md](docs/API_CONVENTIONS.md): schema 和返回约定
 
-## 隐私说明
-
-README 使用 `<path-to-colab_mcp>` 等占位符，不包含本机用户名、个人 checkout 路径、token 或 runtime 产物。训练产物建议放在 `artifacts/` 下，该目录已被 git 忽略。
+感谢来自linux.do的各位佬们的支持
