@@ -1,3 +1,5 @@
+The Repositories was supported by Linux.do
+
 # Colab MCP
 
 Local-first MCP server for controlling Google Colab as a development, shell, file, and training runtime.

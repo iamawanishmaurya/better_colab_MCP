@@ -1,3 +1,5 @@
+本仓库由 [学AI,上L站!](Linux.do) 赞助提供
+
 # Colab MCP
 
 本项目是一个本地优先的 MCP 服务，用来把 Google Colab 作为开发、Shell、文件传输和训练运行时来控制。
@@ -305,4 +307,3 @@ uv run python -m compileall src
 - [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md): 故障排查
 - [docs/API_CONVENTIONS.md](docs/API_CONVENTIONS.md): schema 和返回约定
 
-感谢来自linux.do的各位佬们的支持
