@@ -888,13 +888,10 @@ class TestManagementToolLogic:
         assert result.structured_content["status"] == "error"
 
 
-class TestLocalFileSafety:
-    def test_upload_local_file_allows_configured_root(self, monkeypatch, tmp_path):
-        root = tmp_path / "root"
-        root.mkdir()
-        source = root / "input.txt"
+class TestLocalFileTransfer:
+    def test_upload_local_file_accepts_resolved_local_path(self, tmp_path):
+        source = tmp_path / "input.txt"
         source.write_text("hello", encoding="utf-8")
-        monkeypatch.setenv(session.LOCAL_FILE_ROOTS_ENV, str(root))
 
         with patch(
             "colab_mcp.session._runtime_upload_file",
@@ -909,21 +906,8 @@ class TestLocalFileSafety:
         assert result["localPath"] == str(source.resolve())
         upload.assert_called_once()
 
-    def test_upload_local_file_rejects_outside_configured_root(self, monkeypatch, tmp_path):
-        root = tmp_path / "root"
-        root.mkdir()
-        source = tmp_path / "outside.txt"
-        source.write_text("secret", encoding="utf-8")
-        monkeypatch.setenv(session.LOCAL_FILE_ROOTS_ENV, str(root))
-
-        with pytest.raises(PermissionError, match="outside allowed roots"):
-            session._runtime_upload_local_file(str(source), "/content/outside.txt")
-
-    def test_download_file_to_local_allows_configured_root(self, monkeypatch, tmp_path):
-        root = tmp_path / "root"
-        root.mkdir()
-        target = root / "out.txt"
-        monkeypatch.setenv(session.LOCAL_FILE_ROOTS_ENV, str(root))
+    def test_download_file_to_local_accepts_resolved_local_path(self, tmp_path):
+        target = tmp_path / "nested" / "out.txt"
 
         with patch(
             "colab_mcp.session._runtime_download_bytes",
@@ -938,19 +922,8 @@ class TestLocalFileSafety:
         assert target.read_bytes() == b"hello"
         assert result["localPath"] == str(target.resolve())
 
-    def test_download_file_to_local_rejects_outside_configured_root(
-        self, monkeypatch, tmp_path
-    ):
-        root = tmp_path / "root"
-        root.mkdir()
-        target = tmp_path / "outside.txt"
-        monkeypatch.setenv(session.LOCAL_FILE_ROOTS_ENV, str(root))
-
-        with pytest.raises(PermissionError, match="outside allowed roots"):
-            session._runtime_download_file_to_local(
-                "/content/out.txt",
-                str(target),
-                overwrite=True,
-            )
+    def test_local_file_path_requires_value(self):
+        with pytest.raises(ValueError, match="Local path is required"):
+            session._runtime_upload_local_file("", "/content/out.txt")
 
 

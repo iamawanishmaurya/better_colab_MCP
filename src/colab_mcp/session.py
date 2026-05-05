@@ -56,8 +56,6 @@ EDGE_CDP_PORT_ENV = "COLAB_MCP_EDGE_CDP_PORT"
 EDGE_CDP_URL_CONTAINS_ENV = "COLAB_MCP_EDGE_URL_CONTAINS"
 EDGE_PROFILE_ENV = "COLAB_MCP_EDGE_PROFILE"
 EDGE_PATH_ENV = "COLAB_MCP_EDGE_PATH"
-LOCAL_FILE_ROOTS_ENV = "COLAB_MCP_LOCAL_FILE_ROOTS"
-ALLOW_ANY_LOCAL_FILE_ENV = "COLAB_MCP_ALLOW_ANY_LOCAL_FILE"
 DEFAULT_EDGE_CDP_PORT = "9333"
 DEFAULT_EDGE_PROFILE = Path.home() / ".codex" / "edge-colab-mcp-profile"
 _TERMINAL_COMMAND_LOCK: asyncio.Lock | None = None
@@ -3156,28 +3154,10 @@ def _runtime_browser_write_file(path: str, data: bytes) -> dict:
     return result
 
 
-def _allowed_local_file_roots() -> list[Path]:
-    raw_roots = os.environ.get(LOCAL_FILE_ROOTS_ENV)
-    roots = raw_roots.split(os.pathsep) if raw_roots else [os.getcwd()]
-    return [
-        Path(root).expanduser().resolve()
-        for root in roots
-        if root and root.strip()
-    ]
-
-
-def _resolve_allowed_local_path(path: str, *, purpose: str) -> Path:
-    resolved = Path(path).expanduser().resolve()
-    if os.environ.get(ALLOW_ANY_LOCAL_FILE_ENV) == "1":
-        return resolved
-    roots = _allowed_local_file_roots()
-    if any(resolved.is_relative_to(root) for root in roots):
-        return resolved
-    root_list = ", ".join(str(root) for root in roots) or "<none>"
-    raise PermissionError(
-        f"Refusing to {purpose} local file outside allowed roots: {resolved}. "
-        f"Allowed roots: {root_list}. Set {LOCAL_FILE_ROOTS_ENV} to add roots."
-    )
+def _resolve_local_path(path: str, *, purpose: str) -> Path:
+    if not path or not str(path).strip():
+        raise ValueError(f"Local path is required for {purpose}.")
+    return Path(path).expanduser().resolve()
 
 
 def _runtime_download_bytes(path: str, *, offset: int = 0, max_bytes: int | None = None) -> tuple[bytes, int]:
@@ -3248,7 +3228,7 @@ def _runtime_upload_local_file(
 ) -> dict:
     import hashlib
 
-    source = _resolve_allowed_local_path(local_path, purpose="upload")
+    source = _resolve_local_path(local_path, purpose="upload")
     if not source.exists():
         raise FileNotFoundError(f"Local file not found: {source}")
     if not source.is_file():
@@ -3300,7 +3280,7 @@ def _runtime_download_file_to_local(
 ) -> dict:
     import hashlib
 
-    target = _resolve_allowed_local_path(local_path, purpose="download")
+    target = _resolve_local_path(local_path, purpose="download")
     if target.exists() and not overwrite:
         raise FileExistsError(f"Local file already exists: {target}")
     if make_parents:
