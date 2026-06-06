@@ -29,6 +29,41 @@ uv run python scripts/colab_opencode_web_terminal.py --setup-timeout 1200 --prin
 uv run python scripts/colab_opencode_web_terminal.py --no-auto-click-connect
 ```
 
+## Localhost Without SSH
+
+Use `scripts/colab_opencode_localhost.py` when you want the Colab-hosted
+Opencode PTY to be reachable from this laptop as `localhost`.
+
+```shell
+uv run python scripts/colab_opencode_localhost.py \
+  --browser-user-data-dir /home/astra/.config/google-chrome \
+  --browser-profile Default \
+  --browser-copy-profile \
+  --browser-profile-copy-dir /tmp/colab-mcp-opencode-profile-copy \
+  --browser-headless \
+  --cdp-port 9458 \
+  --local-port 8765
+```
+
+The script:
+
+- Connects Colab MCP through copied-profile headless CDP.
+- Connects the Colab runtime.
+- Installs/starts Opencode and `ttyd` on the remote Colab port.
+- Reads the Colab kernel proxy URL.
+- Starts a local HTTP/WebSocket reverse proxy at `http://127.0.0.1:8765`.
+- Runs a localhost smoke request before staying attached.
+
+For non-interactive validation:
+
+```shell
+uv run python scripts/colab_opencode_localhost.py --exit-after-smoke
+```
+
+This is not SSH. It is a local reverse proxy to Colab's kernel port proxy. If
+the Colab runtime stops, the local URL will stop working until the script is run
+again.
+
 Runtime paths:
 
 - Opencode binary: `/root/.opencode/bin/opencode`

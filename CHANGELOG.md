@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.5.0 - 2026-06-06
+
+- Added `scripts/colab_opencode_localhost.py` to start Opencode in Colab and expose the `ttyd` PTY at local `http://127.0.0.1:<port>` without SSH.
+- Added local HTTP/WebSocket reverse proxying from laptop localhost to Colab's kernel port proxy.
+- Added CDP extraction of the Colab runtime proxy cookie, with redacted cookie diagnostics, so server-side localhost proxy requests can authenticate to the Colab port proxy.
+- Updated the Opencode setup cell to emit `proxyUrl` and proxy URL errors in `COLAB_OPENCODE_RESULT`.
+- Added localhost smoke testing for ttyd HTML and verified WebSocket access at `ws://127.0.0.1:8765/ws`.
+- Added `aiohttp` as a runtime dependency for local HTTP/WebSocket proxy support.
+
 ## v0.4.0 - 2026-06-06
 
 - Added headless Chrome/CDP auth mode with `COLAB_MCP_BROWSER_HEADLESS`, `COLAB_MCP_BROWSER_COOKIE_FILE`, blank-first launch, and cookie import before Colab navigation.

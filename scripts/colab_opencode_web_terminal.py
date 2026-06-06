@@ -201,13 +201,20 @@ run("opencode --version", timeout=60)
 run("ttyd --version", timeout=60)
 start_ttyd()
 
+proxy_url = None
+proxy_url_error = None
 try:
     from google.colab import output
 
+    try:
+        proxy_url = output.eval_js(f"google.colab.kernel.proxyPort({{PORT}})")
+    except Exception as exc:
+        proxy_url_error = repr(exc)
     output.serve_kernel_port_as_window(PORT)
     output.serve_kernel_port_as_iframe(PORT, width="100%", height=900)
 except Exception as exc:
     emit("Colab port exposure warning: " + repr(exc))
+    proxy_url_error = proxy_url_error or repr(exc)
 
 pid = Path(PID_PATH).read_text().strip() if Path(PID_PATH).exists() else ""
 result = {{
@@ -220,6 +227,8 @@ result = {{
     "opencode": shutil.which("opencode"),
     "ttyd": shutil.which("ttyd"),
     "portOpen": port_open(PORT),
+    "proxyUrl": proxy_url,
+    "proxyUrlError": proxy_url_error,
 }}
 emit("COLAB_OPENCODE_RESULT " + json.dumps(result, sort_keys=True))
 """

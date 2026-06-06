@@ -401,3 +401,111 @@
 - Step name: Full validation and secret scan
 - Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run pytest -q`, and searched the repository for representative live cookie values from the user-provided export.
 - Result: Ruff passed, compileall compiled all source/scripts, the full test suite passed with `64 passed in 8.47s`, and the scan found only the dummy test string `secret-cookie-value`, not the live cookie values.
+
+## 2026-06-06T15:45:00+05:30 - Opencode localhost test preflight
+
+- Step name: Opencode localhost test preflight
+- Action: Checked the repo path, timestamp, git status, and current `scripts/colab_opencode_web_terminal.py` before starting Opencode in Colab.
+- Result: The worktree was clean on `master...fork/master`; the helper still uses visible-browser connection, so the live test will use the copied-profile CDP MCP path directly and then evaluate whether local `localhost` access is possible without SSH.
+
+## 2026-06-06T15:46:27+05:30 - Localhost proxy dependency check
+
+- Step name: Localhost proxy dependency check
+- Action: Checked whether `aiohttp` is available for a local HTTP/WebSocket reverse proxy from laptop `localhost` to the Colab kernel port proxy.
+- Result: `aiohttp` is present locally as version `3.13.5`; it will be added to project dependencies so localhost proxy support is reproducible.
+
+## 2026-06-06T15:47:09+05:30 - Localhost proxy dependency added
+
+- Step name: Localhost proxy dependency added
+- Action: Ran `uv add 'aiohttp>=3.13.5'`.
+- Result: `aiohttp` and its dependencies were added to the project environment and lockfile; `aiohttp==3.14.0` was installed.
+
+## 2026-06-06T15:49:31+05:30 - Opencode localhost bridge implementation
+
+- Step name: Opencode localhost bridge implementation
+- Action: Updated `scripts/colab_opencode_web_terminal.py` to emit the Colab kernel proxy URL and added `scripts/colab_opencode_localhost.py` with copied-profile CDP startup, runtime connection, Opencode/ttyd setup, local HTTP/WebSocket reverse proxying, and localhost smoke testing.
+- Result: The repo now has a no-SSH path for serving Opencode from a Colab runtime at a local `http://127.0.0.1:<port>` URL.
+
+## 2026-06-06T15:50:18+05:30 - Opencode localhost documentation
+
+- Step name: Opencode localhost documentation
+- Action: Updated `docs/OPENCODE_COLAB.md` with the `scripts/colab_opencode_localhost.py` workflow, copied-profile command, localhost URL, non-interactive smoke mode, and no-SSH explanation.
+- Result: The Opencode docs now distinguish Colab iframe/window access from local `127.0.0.1` reverse-proxy access.
+
+## 2026-06-06T15:50:58+05:30 - Opencode localhost local validation
+
+- Step name: Opencode localhost local validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest -q`.
+- Result: Ruff passed, compileall compiled all source/scripts including `scripts/colab_opencode_localhost.py`, and the full test suite passed with `64 passed in 7.40s`.
+
+## 2026-06-06T15:52:40+05:30 - Opencode localhost parser problem log and fix
+
+- Step name: Opencode localhost parser problem log and fix
+- Action: Ran the live Opencode localhost smoke command, logged `docs/problems/2026-06-06-opencode-localhost-result-parser-missed-inline-marker.md`, updated `parse_setup_result()` to find the marker anywhere in the output with `JSONDecoder.raw_decode()`, and added `docs/solutions/opencode-localhost-result-parser-missed-inline-marker.md`.
+- Result: The live setup proved Opencode and ttyd started in Colab, but the first localhost smoke did not start because the parser missed an inline marker after IPython Javascript display output; the parser is now tolerant of that Colab output format.
+
+## 2026-06-06T15:54:09+05:30 - Opencode parser fix validation
+
+- Step name: Opencode parser fix validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest -q` after patching the Opencode localhost result parser.
+- Result: Ruff passed, compileall compiled all source/scripts, and the full test suite passed with `64 passed in 7.51s`.
+
+## 2026-06-06T15:55:06+05:30 - Opencode localhost Colab proxy 404 problem log
+
+- Step name: Opencode localhost Colab proxy 404 problem log
+- Action: Reran the live Opencode localhost smoke command and logged `docs/problems/2026-06-06-opencode-localhost-colab-proxy-root-404.md` after the local smoke request returned status `404`.
+- Result: Opencode and ttyd started in Colab again, the parser fix worked, and the local proxy started, but proxying local `/` to the returned Colab proxy origin root produced `404`; the next step is to inspect Colab proxy URL/path behavior.
+
+## 2026-06-06T15:56:29+05:30 - CDP inspection diagnostic problem log
+
+- Step name: CDP inspection diagnostic problem log
+- Action: Logged `docs/problems/2026-06-06-cdp-inspection-json-result-none.md` and `docs/solutions/cdp-inspection-json-result-none.md` after a local CDP inspection helper assumed `Runtime.evaluate.result.value` was a string and hit `None`.
+- Result: The diagnostic tooling issue is documented; the next inspection will print the full CDP response instead of assuming a string result.
+
+## 2026-06-06T15:59:25+05:30 - Colab proxy cookie forwarding implementation
+
+- Step name: Colab proxy cookie forwarding implementation
+- Action: Updated `scripts/colab_opencode_localhost.py` to read Colab runtime proxy cookies from the controlled browser over CDP and forward them as redacted HTTP/WebSocket auth headers in the local reverse proxy.
+- Result: Direct testing showed the returned Colab proxy origin serves ttyd HTML only when the `colab-runtime-proxy-token` cookie is present; the script now supplies that cookie internally without printing the value.
+
+## 2026-06-06T16:00:02+05:30 - Colab proxy cookie forwarding validation
+
+- Step name: Colab proxy cookie forwarding validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest -q` after adding CDP cookie forwarding.
+- Result: Ruff passed, compileall compiled all source/scripts, and the full test suite passed with `64 passed in 7.05s`.
+
+## 2026-06-06T16:00:56+05:30 - Opencode localhost gzip problem log and fix
+
+- Step name: Opencode localhost gzip problem log and fix
+- Action: Reran the live Opencode localhost smoke command, logged `docs/problems/2026-06-06-opencode-localhost-gzip-double-decode.md`, updated the proxy `ClientSession` to `auto_decompress=False`, added smoke-exception cleanup, and created `docs/solutions/opencode-localhost-gzip-double-decode.md`.
+- Result: The run proved cookie forwarding reached ttyd, but smoke failed from gzip double-decoding; the proxy now preserves upstream encoded bytes and cleans up on failures.
+
+## 2026-06-06T16:02:55+05:30 - Opencode gzip fix validation
+
+- Step name: Opencode gzip fix validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest -q` after preserving upstream compressed bytes.
+- Result: Ruff passed, compileall compiled all source/scripts, and the full test suite passed with `64 passed in 7.69s`.
+
+## 2026-06-06T16:03:48+05:30 - Opencode localhost smoke success
+
+- Step name: Opencode localhost smoke success
+- Action: Reran `scripts/colab_opencode_localhost.py --exit-after-smoke` with copied-profile headless CDP on port `9458` and local port `8765`.
+- Result: MCP connected, runtime was ready, Opencode `1.16.2` and ttyd `1.6.3` were running in Colab, the script extracted `colab-runtime-proxy-token` via CDP without printing its value, and local `http://127.0.0.1:8765` returned status `200` with ttyd HTML.
+
+## 2026-06-06T16:05:34+05:30 - Opencode localhost persistent verification
+
+- Step name: Opencode localhost persistent verification
+- Action: Started `scripts/colab_opencode_localhost.py` without `--exit-after-smoke`, verified the persistent process on local port `8765`, ran an independent compressed GET to `http://127.0.0.1:8765`, and opened `ws://127.0.0.1:8765/ws`.
+- Result: The persistent local proxy is running as PID `3110007`; `GET /` returned `200 OK` with ttyd HTML and the WebSocket endpoint opened successfully, so Opencode is accessible locally without SSH at `http://127.0.0.1:8765`.
+
+## 2026-06-06T16:06:28+05:30 - Version bump for Opencode localhost
+
+- Step name: Version bump for Opencode localhost
+- Action: Ran `uv version 0.5.0` and updated `CHANGELOG.md` with the Opencode localhost bridge, CDP proxy-cookie forwarding, local smoke testing, and `aiohttp` dependency.
+- Result: The package version is now `0.5.0` for the localhost Opencode release.
+
+## 2026-06-06T16:07:14+05:30 - Opencode localhost final validation
+
+- Step name: Opencode localhost final validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run pytest -q`, and searched for representative live Google cookie values plus runtime proxy cookie value patterns.
+- Result: Ruff passed, compileall compiled all source/scripts, the full test suite passed with `64 passed in 6.52s`, and the scan found only the intentional dummy test string plus the prior step note, not live cookie values.
