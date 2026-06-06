@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.2.0 - 2026-06-06
+
+- Added `scripts/colab_cell_terminal.py`, a tmux-friendly shell bridge backed by a reusable Colab code cell over MCP.
+- Added `docs/TMUX_CELL_TERMINAL.md` with attach/start instructions and limitations.
+- Added bridge startup diagnostics, redacted connection URL output, explicit Chrome new-window opening, and a longer default browser connection timeout.
+- Verified live MCP browser connection, `add_code_cell`, and `run_code_cell` against the local Chrome profile.
+
 ## v0.1.0 - 2026-06-06
 
 - Rebased local work onto `404F0X/better_colab_MCP` instead of the Google baseline clone.
