@@ -64,6 +64,59 @@ This is not SSH. It is a local reverse proxy to Colab's kernel port proxy. If
 the Colab runtime stops, the local URL will stop working until the script is run
 again.
 
+## Enter-To-Reconnect Supervisor
+
+Use `scripts/colab_opencode_supervisor.py` when you want the bridge to record
+session state and wait for Enter before reconnecting after the local or Colab
+session dies.
+
+```shell
+uv run python scripts/colab_opencode_supervisor.py \
+  --browser-user-data-dir /home/astra/.config/google-chrome \
+  --browser-profile Default \
+  --browser-copy-profile \
+  --browser-profile-copy-dir /tmp/colab-mcp-opencode-profile-copy \
+  --browser-headless \
+  --cdp-port 9458 \
+  --local-port 8765
+```
+
+The supervisor writes state to:
+
+```text
+/tmp/colab-mcp-opencode-session-state.json
+```
+
+When health checks fail or the bridge exits, it marks the session `dead` and
+prints:
+
+```text
+Session is down. Press Enter to reconnect Colab MCP and Opencode, or Ctrl+C to stop.
+```
+
+Press Enter in the supervisor terminal to restart the MCP connection, reconnect
+the Colab runtime, restart ttyd/Opencode, and restore localhost access.
+
+To keep the supervisor attachable across shell interruptions, run it in tmux:
+
+```shell
+tmux new-session -s colab-opencode-supervisor
+uv run python scripts/colab_opencode_supervisor.py \
+  --browser-user-data-dir /home/astra/.config/google-chrome \
+  --browser-profile Default \
+  --browser-copy-profile \
+  --browser-profile-copy-dir /tmp/colab-mcp-opencode-profile-copy \
+  --browser-headless \
+  --cdp-port 9458 \
+  --local-port 8765
+```
+
+Attach later and press Enter if the supervisor reports a dead session:
+
+```shell
+tmux attach -t colab-opencode-supervisor
+```
+
 Runtime paths:
 
 - Opencode binary: `/root/.opencode/bin/opencode`

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.0 - 2026-06-06
+
+- Added `scripts/colab_opencode_supervisor.py` to monitor the local Opencode bridge, record session state, detect dead/degraded sessions, and reconnect Colab MCP plus Opencode when the user presses Enter.
+- Added health checks for local ttyd HTTP and WebSocket endpoints.
+- Documented the supervisor workflow and `/tmp/colab-mcp-opencode-session-state.json` state file.
+
 ## v0.5.0 - 2026-06-06
 
 - Added `scripts/colab_opencode_localhost.py` to start Opencode in Colab and expose the `ttyd` PTY at local `http://127.0.0.1:<port>` without SSH.

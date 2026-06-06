@@ -509,3 +509,45 @@
 - Step name: Opencode localhost final validation
 - Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run pytest -q`, and searched for representative live Google cookie values plus runtime proxy cookie value patterns.
 - Result: Ruff passed, compileall compiled all source/scripts, the full test suite passed with `64 passed in 6.52s`, and the scan found only the intentional dummy test string plus the prior step note, not live cookie values.
+
+## 2026-06-06T16:13:30+05:30 - Opencode reconnect supervisor preflight
+
+- Step name: Opencode reconnect supervisor preflight
+- Action: Checked the repo path, timestamp, git status, and current `scripts/colab_opencode_localhost.py` after the user reported that pressing Enter does not trigger a reconnect when the session dies.
+- Result: The worktree was clean on `master...fork/master`; the existing localhost bridge runs a persistent proxy but does not record session death or provide an Enter-to-reconnect loop.
+
+## 2026-06-06T16:15:39+05:30 - Opencode reconnect supervisor implementation
+
+- Step name: Opencode reconnect supervisor implementation
+- Action: Added `scripts/colab_opencode_supervisor.py`.
+- Result: The new supervisor records session state to JSON, starts the existing Opencode localhost bridge, checks local HTTP/WebSocket health, marks dead/degraded states, and waits for the user to press Enter before reconnecting Colab MCP and Opencode.
+
+## 2026-06-06T16:16:36+05:30 - Opencode supervisor docs and version bump
+
+- Step name: Opencode supervisor docs and version bump
+- Action: Updated `docs/OPENCODE_COLAB.md` with the Enter-to-reconnect supervisor workflow, ran `uv version 0.6.0`, and updated `CHANGELOG.md`.
+- Result: The package version is now `0.6.0` and the changelog documents the reconnect supervisor, state file, and HTTP/WebSocket health checks.
+
+## 2026-06-06T16:17:24+05:30 - Opencode supervisor local validation
+
+- Step name: Opencode supervisor local validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest -q`.
+- Result: Ruff passed, compileall compiled all source/scripts including `scripts/colab_opencode_supervisor.py`, and the full test suite passed with `64 passed in 7.18s`.
+
+## 2026-06-06T16:20:33+05:30 - Opencode supervisor forced-death verification
+
+- Step name: Opencode supervisor forced-death verification
+- Action: Started `scripts/colab_opencode_supervisor.py` with a test state file, waited for `status=running`, killed its child bridge PID, observed the dead-state prompt, sent Enter to the supervisor, then checked localhost HTTP and WebSocket access.
+- Result: The supervisor wrote `status=dead` with `lastError=bridge exited with code -15`, printed `Session is down. Press Enter to reconnect Colab MCP and Opencode, or Ctrl+C to stop.`, accepted Enter, restarted the child bridge with `restartCount=1`, restored `GET http://127.0.0.1:8765` to `200` with ttyd HTML, and opened `ws://127.0.0.1:8765/ws`.
+
+## 2026-06-06T16:22:07+05:30 - Opencode tmux supervisor start
+
+- Step name: Opencode tmux supervisor start
+- Action: Started `scripts/colab_opencode_supervisor.py` inside tmux session `colab-opencode-supervisor`, using state file `/tmp/colab-mcp-opencode-session-state.json`, then verified local HTTP and WebSocket access.
+- Result: The tmux supervisor reached `status=running`; `GET http://127.0.0.1:8765` returned `200` with ttyd HTML, `ws://127.0.0.1:8765/ws` opened, and `docs/OPENCODE_COLAB.md` now documents `tmux attach -t colab-opencode-supervisor`.
+
+## 2026-06-06T16:22:52+05:30 - Opencode supervisor final validation
+
+- Step name: Opencode supervisor final validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run pytest -q`, and searched for representative live Google cookie values plus runtime proxy cookie value patterns.
+- Result: Ruff passed, compileall compiled all source/scripts, the full test suite passed with `64 passed in 6.73s`, and the scan found only the intentional dummy test string plus the prior step note, not live cookie values.
