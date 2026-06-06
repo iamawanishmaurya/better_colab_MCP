@@ -23,8 +23,10 @@ import logging
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import subprocess
+import sys
 import time
 import urllib.parse
 import urllib.request
@@ -45,19 +47,32 @@ from websockets.sync.client import connect as websocket_connect
 
 from colab_mcp.websocket_server import ColabWebSocketServer, COLAB, SCRATCH_PATH
 
-UI_CONNECTION_TIMEOUT = 90.0  # secs
-
 FE_CONNECTED_KEY = "fe_connected"
 PROXY_TOKEN_KEY = "proxy_token"
 PROXY_PORT_KEY = "proxy_port"
 INJECTED_TOOL_NAME = "open_colab_browser_connection"
 ENV_SETUP_MARKER_PREFIX = "# COLAB_MCP_ENV_SETUP:"
+CONNECTION_TIMEOUT_ENV = "COLAB_MCP_CONNECTION_TIMEOUT"
+BROWSER_COMMAND_ENV = "COLAB_MCP_BROWSER_COMMAND"
+BROWSER_PROFILE_ENV = "COLAB_MCP_BROWSER_PROFILE"
+BROWSER_USER_DATA_DIR_ENV = "COLAB_MCP_BROWSER_USER_DATA_DIR"
+BROWSER_PRINT_CONNECTION_URL_ENV = "COLAB_MCP_PRINT_CONNECTION_URL"
 EDGE_CDP_PORT_ENV = "COLAB_MCP_EDGE_CDP_PORT"
 EDGE_CDP_URL_CONTAINS_ENV = "COLAB_MCP_EDGE_URL_CONTAINS"
 EDGE_PROFILE_ENV = "COLAB_MCP_EDGE_PROFILE"
 EDGE_PATH_ENV = "COLAB_MCP_EDGE_PATH"
+DEFAULT_UI_CONNECTION_TIMEOUT = 180.0  # secs
+UI_CONNECTION_TIMEOUT = DEFAULT_UI_CONNECTION_TIMEOUT
 DEFAULT_EDGE_CDP_PORT = "9333"
 DEFAULT_EDGE_PROFILE = Path.home() / ".codex" / "edge-colab-mcp-profile"
+DEFAULT_CHROME_USER_DATA_DIR = Path.home() / ".config" / "google-chrome"
+CHROME_COMMAND_CANDIDATES = (
+    "google-chrome-stable",
+    "google-chrome",
+    "chrome",
+    "chromium",
+    "chromium-browser",
+)
 _TERMINAL_COMMAND_LOCK: asyncio.Lock | None = None
 
 
@@ -66,6 +81,28 @@ def _terminal_command_lock() -> asyncio.Lock:
     if _TERMINAL_COMMAND_LOCK is None:
         _TERMINAL_COMMAND_LOCK = asyncio.Lock()
     return _TERMINAL_COMMAND_LOCK
+
+
+def _env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _env_float(name: str, default: float) -> float:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    try:
+        parsed = float(value)
+    except ValueError:
+        return default
+    return parsed if parsed > 0 else default
+
+
+def _connection_timeout_seconds() -> float:
+    return _env_float(CONNECTION_TIMEOUT_ENV, UI_CONNECTION_TIMEOUT)
 
 
 COLAB_STATIC_TOOL_SCHEMAS = {
@@ -1002,7 +1039,7 @@ class ColabProxyClient:
             )
             await asyncio.wait_for(
                 connection_tasks,
-                timeout=UI_CONNECTION_TIMEOUT,
+                timeout=_connection_timeout_seconds(),
             )
 
     def client_factory(self):
@@ -1443,6 +1480,7 @@ class ColabRuntimeManagementTool(Tool):
         if self.name == "get_connection_info":
             info = dict(self._proxy_client.wss.connection_info())
             info["connected"] = self._proxy_client.is_connected()
+            info["browser"] = _browser_diagnostics()
             text = json.dumps(info, ensure_ascii=False)
             return ToolResult(
                 content=[TextContent(type="text", text=text)],
@@ -2919,12 +2957,95 @@ def _edge_executable_path() -> str:
     raise RuntimeError("Microsoft Edge executable was not found.")
 
 
+def _resolve_command(command: str) -> list[str]:
+    parts = shlex.split(command)
+    if not parts:
+        raise RuntimeError("Browser command is empty.")
+    executable = parts[0]
+    if Path(executable).exists() or shutil.which(executable):
+        return parts
+    raise RuntimeError(f"Configured browser executable was not found: {executable}")
+
+
+def _browser_command_parts() -> list[str]:
+    configured = os.environ.get(BROWSER_COMMAND_ENV)
+    if configured:
+        return _resolve_command(configured)
+
+    if os.environ.get(EDGE_PATH_ENV):
+        return [_edge_executable_path()]
+
+    prefer_chrome = bool(
+        os.environ.get(BROWSER_PROFILE_ENV) or os.environ.get(BROWSER_USER_DATA_DIR_ENV)
+    )
+    if prefer_chrome:
+        for name in CHROME_COMMAND_CANDIDATES:
+            found = shutil.which(name)
+            if found:
+                return [found]
+
+    return [_edge_executable_path()]
+
+
+def _browser_user_data_dir() -> Path:
+    configured = os.environ.get(BROWSER_USER_DATA_DIR_ENV)
+    if configured:
+        return Path(configured).expanduser()
+    if os.environ.get(BROWSER_PROFILE_ENV):
+        return DEFAULT_CHROME_USER_DATA_DIR
+    return Path(os.environ.get(EDGE_PROFILE_ENV, str(DEFAULT_EDGE_PROFILE))).expanduser()
+
+
+def _browser_profile_directory() -> str | None:
+    return os.environ.get(BROWSER_PROFILE_ENV)
+
+
+def _browser_diagnostics() -> dict:
+    command = os.environ.get(BROWSER_COMMAND_ENV)
+    if not command:
+        try:
+            command = _browser_command_parts()[0]
+        except Exception:
+            command = None
+    return {
+        "command": command,
+        "userDataDir": str(_browser_user_data_dir()),
+        "profileDirectory": _browser_profile_directory(),
+        "cdpPort": os.environ.get(EDGE_CDP_PORT_ENV, DEFAULT_EDGE_CDP_PORT),
+        "urlContains": os.environ.get(
+            EDGE_CDP_URL_CONTAINS_ENV, "colab.research.google.com"
+        ),
+        "connectionTimeoutSeconds": _connection_timeout_seconds(),
+        "printConnectionUrl": _env_bool(BROWSER_PRINT_CONNECTION_URL_ENV),
+        "compatibilityEnv": {
+            "edgePath": os.environ.get(EDGE_PATH_ENV),
+            "edgeProfile": os.environ.get(EDGE_PROFILE_ENV),
+        },
+    }
+
+
+def _controlled_browser_command(url: str, *, port: str) -> list[str]:
+    profile = _browser_user_data_dir()
+    profile.mkdir(parents=True, exist_ok=True)
+    command = [
+        *_browser_command_parts(),
+        "--remote-debugging-address=127.0.0.1",
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={profile}",
+        "--no-first-run",
+        "--new-window",
+    ]
+    profile_directory = _browser_profile_directory()
+    if profile_directory:
+        command.append(f"--profile-directory={profile_directory}")
+    command.append(url)
+    return command
+
+
 def _ensure_controlled_edge(url: str, *, port: str) -> None:
     if _cdp_alive(port):
         return
 
-    profile = Path(os.environ.get(EDGE_PROFILE_ENV, str(DEFAULT_EDGE_PROFILE)))
-    profile.mkdir(parents=True, exist_ok=True)
     creationflags = 0
     for flag_name in (
         "CREATE_NO_WINDOW",
@@ -2933,16 +3054,11 @@ def _ensure_controlled_edge(url: str, *, port: str) -> None:
         "CREATE_BREAKAWAY_FROM_JOB",
     ):
         creationflags |= getattr(subprocess, flag_name, 0)
+    command = _controlled_browser_command(url, port=port)
+    if _env_bool(BROWSER_PRINT_CONNECTION_URL_ENV):
+        print(f"Colab MCP connection URL: {url}", file=sys.stderr, flush=True)
     subprocess.Popen(
-        [
-            _edge_executable_path(),
-            "--remote-debugging-address=127.0.0.1",
-            f"--remote-debugging-port={port}",
-            f"--user-data-dir={profile}",
-            "--no-first-run",
-            "--new-window",
-            url,
-        ],
+        command,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         stdin=subprocess.DEVNULL,
@@ -2990,7 +3106,7 @@ def _terminal_endpoint_info() -> dict:
 JSON.stringify((()=>{
   const body = document.body?.innerText || '';
   const email = window.colabUserEmail || null;
-  if (!email || email === 'anonymous' || /Sign in|登录|登入/.test(body)) {
+  if (!email || email === 'anonymous' || /Sign in/.test(body)) {
     return {ok:false, loginRequired:true, message:'Colab login is required in the dedicated MCP browser. Ask the user to log into Google/Colab in that Edge window, then rerun the command.'};
   }
   const notebook = window.colab?.global?.notebook;
@@ -3514,7 +3630,7 @@ def _terminal_command_expression(
   const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
   const body = document.body?.innerText || '';
   const email = window.colabUserEmail || null;
-  if (!email || email === 'anonymous' || /Sign in|登录|登入/.test(body)) {{
+  if (!email || email === 'anonymous' || /Sign in/.test(body)) {{
     return JSON.stringify({{
       ok: false,
       loginRequired: true,
@@ -3627,7 +3743,7 @@ def _runtime_accelerator_state_expression() -> str:
       text: label(el).slice(0, 160),
       checked: Boolean(el.checked),
     }))
-    .filter(item => /CPU|GPU|TPU|Hardware accelerator|Accelerator|硬件加速器|运行时类型|Runtime type/i.test(item.text))
+    .filter(item => /CPU|GPU|TPU|Hardware accelerator|Accelerator|Runtime type/i.test(item.text))
     .slice(0, 100);
   return JSON.stringify({
     ok: true,
@@ -3721,7 +3837,7 @@ def _runtime_connection_expression(wait_seconds: int) -> str:
     const relevant = allDeep()
       .filter(el => visible(el))
       .map(el => ({{ tag: el.tagName, role: el.getAttribute?.('role') || null, text: label(el).slice(0, 180) }}))
-      .filter(item => /Connect|Reconnect|runtime|运行时|连接|重新连接|GPU|TPU/i.test(item.text))
+      .filter(item => /Connect|Reconnect|runtime|GPU|TPU/i.test(item.text))
       .slice(0, 80);
     return {{
       href: location.href,
@@ -4029,10 +4145,10 @@ def _runtime_accelerator_expression(accelerator: str, apply: bool) -> str:
 
   out.after = state();
   const afterText = JSON.stringify(out.after);
-  if (/无法保存更改|Unable to save|cloud_off/.test(afterText)) {{
+  if (/Unable to save|cloud_off/.test(afterText)) {{
     out.warnings.push('Colab reported that notebook changes could not be saved; the accelerator selection may still require a runtime reconnect or a Drive copy.');
   }}
-  if (/连接到新的运行时|Connect to a new runtime/.test(afterText)) {{
+  if (/Connect to a new runtime/.test(afterText)) {{
     out.warnings.push('Colab is not attached to a runtime after the accelerator change; connect the runtime before running GPU checks.');
   }}
   const failed = out.steps.filter(s => !s.clicked && !['apply-runtime-dialog'].includes(s.name));
@@ -4095,7 +4211,7 @@ def _navigate_controlled_edge(
 def _connect_colab_tab(
     websocket_url: str, url: str, token: str, mcp_port: str
 ) -> bool:
-    deadline = time.monotonic() + UI_CONNECTION_TIMEOUT
+    deadline = time.monotonic() + _connection_timeout_seconds()
     last_ready = None
     while time.monotonic() < deadline:
         try:

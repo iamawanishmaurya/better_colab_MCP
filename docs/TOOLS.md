@@ -151,9 +151,10 @@ specific accelerator is required.
 
 `colabctl` is a local browser/control helper:
 
-By default it uses a dedicated Edge CDP port (`9333`) and dedicated profile
-(`~/.codex/edge-colab-mcp-profile`) so it does not navigate your normal browser
-tabs.
+By default it uses CDP port `9333` and a dedicated browser profile so it does
+not navigate your normal browser tabs. Set `COLAB_MCP_BROWSER_COMMAND`,
+`COLAB_MCP_BROWSER_USER_DATA_DIR`, and `COLAB_MCP_BROWSER_PROFILE` to reuse an
+existing authenticated Chrome profile.
 
 - `colabctl status`
 - `colabctl connect`

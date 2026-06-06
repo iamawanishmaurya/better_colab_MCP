@@ -4,14 +4,14 @@ The Repositories was supported by Linux.do
 
 Local-first MCP server for controlling Google Colab as a development, shell, file, and training runtime.
 
-Chinese documentation: [README.zh-CN.md](README.zh-CN.md)
+Legacy translated documentation has been converted to English in this fork.
 
 ## What This Provides
 
 This fork extends the upstream static Colab MCP baseline with:
 
 - notebook editing, batch execution, status polling, and output reading
-- controlled Edge browser startup and Colab frontend MCP repair
+- controlled Chrome/Chromium/Edge browser startup and Colab frontend MCP repair
 - explicit Python runtime connection with `connect_runtime`
 - MCP-native runtime accelerator switching, including T4 GPU selection
 - Colab Terminal-backed shell commands and background jobs
@@ -50,6 +50,10 @@ MCP client configuration:
       "args": ["run", "--directory", "<path-to-colab_mcp>", "colab-mcp"],
       "startup_timeout_sec": 120,
       "env": {
+        "COLAB_MCP_BROWSER_COMMAND": "google-chrome-stable",
+        "COLAB_MCP_BROWSER_USER_DATA_DIR": "/home/astra/.config/google-chrome",
+        "COLAB_MCP_BROWSER_PROFILE": "Default",
+        "COLAB_MCP_CONNECTION_TIMEOUT": "180",
         "COLAB_MCP_EDGE_CDP_PORT": "9333",
         "COLAB_MCP_EDGE_URL_CONTAINS": "colab.research.google.com"
       }
@@ -260,13 +264,33 @@ Notebook import/export:
 
 ## Browser Control
 
-`open_colab_browser_connection` can start a dedicated Microsoft Edge instance, open Colab, and connect the Colab frontend to the local MCP server.
+`open_colab_browser_connection` can start a controlled Chrome, Chromium, or Edge instance, open Colab, and connect the Colab frontend to the local MCP server.
+
+Recommended local Chrome profile for this workstation:
+
+- Browser command: `google-chrome-stable`
+- Browser user data directory: `/home/astra/.config/google-chrome`
+- Browser profile directory: `Default`
+- Signed-in profile identity: `nothumanatall` / `canbehumanagain@gmail.com`
+- Connection timeout: `180` seconds or higher when Colab is slow to load
 
 Defaults:
 
+- Browser command: auto-detected Edge unless Chrome config is set; override with `COLAB_MCP_BROWSER_COMMAND`
+- Browser user data directory: dedicated Edge profile by default; override with `COLAB_MCP_BROWSER_USER_DATA_DIR`
+- Browser profile directory: unset by default; set `COLAB_MCP_BROWSER_PROFILE=Default` for the local Chrome profile
+- Connection timeout: `180` seconds by default; override with `COLAB_MCP_CONNECTION_TIMEOUT`
 - CDP port: `9333`, override with `COLAB_MCP_EDGE_CDP_PORT`
-- Edge profile: `~/.codex/edge-colab-mcp-profile`, override with `COLAB_MCP_EDGE_PROFILE`
-- Edge executable: auto-detected, override with `COLAB_MCP_EDGE_PATH`
+- Legacy Edge profile alias: `COLAB_MCP_EDGE_PROFILE`
+- Legacy Edge executable alias: `COLAB_MCP_EDGE_PATH`
+
+Equivalent command-line startup:
+
+```powershell
+uv run colab-mcp --browser-command google-chrome-stable --browser-user-data-dir /home/astra/.config/google-chrome --browser-profile Default --connection-timeout 180
+```
+
+`get_connection_info` returns browser diagnostics including command, user data directory, profile directory, CDP port, URL filter, and effective connection timeout.
 
 `colabctl` remains available for diagnostics and manual repair:
 

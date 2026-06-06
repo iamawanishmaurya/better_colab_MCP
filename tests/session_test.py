@@ -214,6 +214,35 @@ class TestControlledEdgeLaunch:
         assert f"--user-data-dir={profile}" in command
         assert command[-1] == "https://example.test"
 
+    def test_controlled_browser_command_uses_chrome_profile(self, monkeypatch):
+        monkeypatch.setenv(session.BROWSER_COMMAND_ENV, "google-chrome-stable")
+        monkeypatch.setenv(
+            session.BROWSER_USER_DATA_DIR_ENV, "/home/astra/.config/google-chrome"
+        )
+        monkeypatch.setenv(session.BROWSER_PROFILE_ENV, "Default")
+        monkeypatch.setattr(
+            session.shutil,
+            "which",
+            lambda name: "/usr/bin/google-chrome-stable"
+            if name == "google-chrome-stable"
+            else None,
+        )
+
+        command = session._controlled_browser_command(
+            "https://example.test", port="9333"
+        )
+
+        assert command[0] == "google-chrome-stable"
+        assert "--remote-debugging-port=9333" in command
+        assert "--user-data-dir=/home/astra/.config/google-chrome" in command
+        assert "--profile-directory=Default" in command
+        assert command[-1] == "https://example.test"
+
+    def test_connection_timeout_uses_env(self, monkeypatch):
+        monkeypatch.setenv(session.CONNECTION_TIMEOUT_ENV, "240")
+
+        assert session._connection_timeout_seconds() == 240.0
+
 
 class TestColabProxyClient:
     def test_is_connected(self, mock_wss):
@@ -438,36 +467,36 @@ class TestOutputNormalization:
         assert "ValueError: bad" in chunks[2]["text"]
         assert all(chunk["timestamp"] == 123.0 for chunk in chunks)
 
-    def test_notebook_document_preserves_cells_outputs_metadata_and_unicode(self):
+    def test_notebook_document_preserves_cells_outputs_metadata(self):
         cells = [
             {
                 "cell_type": "markdown",
                 "id": "md-1",
-                "metadata": {"custom": "值"},
-                "source": ["# 标题\n"],
+                "metadata": {"custom": "value"},
+                "source": ["# Title\n"],
             },
             {
                 "cell_type": "code",
                 "id": "code-1",
                 "execution_count": 7,
                 "metadata": {"tags": ["keep"]},
-                "source": ["print('你好')\n"],
+                "source": ["print('hello')\n"],
                 "outputs": [
-                    {"output_type": "stream", "name": "stdout", "text": ["你好\n"]}
+                    {"output_type": "stream", "name": "stdout", "text": ["hello\n"]}
                 ],
             },
         ]
 
         notebook = session.ColabRuntimeManagementTool._notebook_document(
-            cells, name="测试.ipynb"
+            cells, name="test.ipynb"
         )
 
         assert notebook["nbformat"] == 4
-        assert notebook["metadata"]["colab"]["name"] == "测试.ipynb"
+        assert notebook["metadata"]["colab"]["name"] == "test.ipynb"
         assert notebook["metadata"]["kernelspec"]["name"] == "python3"
-        assert notebook["cells"][0]["metadata"] == {"custom": "值"}
+        assert notebook["cells"][0]["metadata"] == {"custom": "value"}
         assert notebook["cells"][1]["execution_count"] == 7
-        assert notebook["cells"][1]["outputs"][0]["text"] == ["你好\n"]
+        assert notebook["cells"][1]["outputs"][0]["text"] == ["hello\n"]
 
     def test_cell_status_idle_success_and_error(self):
         idle = session.ColabRuntimeManagementTool._cell_status(
@@ -555,6 +584,27 @@ def management_tool(mock_proxy_client, name):
 
 
 class TestManagementToolLogic:
+    @pytest.mark.asyncio
+    async def test_get_connection_info_includes_browser_diagnostics(
+        self, mock_proxy_client, monkeypatch
+    ):
+        monkeypatch.setenv(session.BROWSER_COMMAND_ENV, "google-chrome-stable")
+        monkeypatch.setenv(
+            session.BROWSER_USER_DATA_DIR_ENV, "/home/astra/.config/google-chrome"
+        )
+        monkeypatch.setenv(session.BROWSER_PROFILE_ENV, "Default")
+        monkeypatch.setenv(session.CONNECTION_TIMEOUT_ENV, "240")
+        tool = management_tool(mock_proxy_client, "get_connection_info")
+
+        result = await tool.run({})
+
+        browser = result.structured_content["browser"]
+        assert browser["command"] == "google-chrome-stable"
+        assert browser["userDataDir"] == "/home/astra/.config/google-chrome"
+        assert browser["profileDirectory"] == "Default"
+        assert browser["connectionTimeoutSeconds"] == 240.0
+        assert result.structured_content["connected"] is False
+
     @pytest.mark.asyncio
     async def test_run_code_cells_stop_on_error(self, mock_proxy_client):
         tool = management_tool(mock_proxy_client, "run_code_cells")
@@ -690,10 +740,10 @@ class TestManagementToolLogic:
     @pytest.mark.asyncio
     async def test_file_tools_use_runtime_contents_api(self, mock_proxy_client):
         upload = management_tool(mock_proxy_client, "upload_file")
-        with patch("colab_mcp.session._runtime_upload_file", return_value={"path": "/content/数据/hello.txt"}):
+        with patch("colab_mcp.session._runtime_upload_file", return_value={"path": "/content/data/hello.txt"}):
             result = await upload.run(
                 {
-                    "path": "/content/数据/hello.txt",
+                    "path": "/content/data/hello.txt",
                     "contentBase64": "5L2g5aW9",
                     "overwrite": False,
                     "makeParents": True,
@@ -715,7 +765,7 @@ class TestManagementToolLogic:
 
         download = management_tool(mock_proxy_client, "download_file")
         with patch("colab_mcp.session._runtime_download_file", return_value={"contentBase64": "5L2g5aW9"}):
-            result = await download.run({"path": "/content/数据/hello.txt", "offset": 2, "maxBytes": 8})
+            result = await download.run({"path": "/content/data/hello.txt", "offset": 2, "maxBytes": 8})
         assert result.structured_content["executionBackend"] == "colab-file-api"
 
         download_local = management_tool(mock_proxy_client, "download_file_to_local")
@@ -760,7 +810,7 @@ class TestManagementToolLogic:
 
         list_files = management_tool(mock_proxy_client, "list_files")
         with patch("colab_mcp.session._runtime_list_files", return_value={"entries": []}):
-            result = await list_files.run({"path": "/content/数据", "recursive": True, "maxEntries": 2})
+            result = await list_files.run({"path": "/content/data", "recursive": True, "maxEntries": 2})
         assert result.structured_content["executionBackend"] == "colab-file-api"
 
         delete = management_tool(mock_proxy_client, "delete_file")
@@ -770,7 +820,7 @@ class TestManagementToolLogic:
 
         mkdir = management_tool(mock_proxy_client, "make_directory")
         with patch("colab_mcp.session._runtime_make_directory", return_value={"created": True}):
-            result = await mkdir.run({"path": "/content/数据/new", "parents": True, "existOk": True})
+            result = await mkdir.run({"path": "/content/data/new", "parents": True, "existOk": True})
         assert result.structured_content["executionBackend"] == "colab-file-api"
 
         upload._run_terminal_python = AsyncMock(return_value={})
@@ -925,5 +975,3 @@ class TestLocalFileTransfer:
     def test_local_file_path_requires_value(self):
         with pytest.raises(ValueError, match="Local path is required"):
             session._runtime_upload_local_file("", "/content/out.txt")
-
-

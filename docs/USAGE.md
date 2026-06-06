@@ -30,11 +30,19 @@ Replace `<path-to-colab_mcp>` with the absolute path to your local checkout.
 
 ## Connect A Browser
 
-`colabctl` uses a dedicated Edge debugging port (`9333`) and a dedicated profile
-under `~/.codex/edge-colab-mcp-profile` by default. This keeps MCP automation
-out of your normal browser windows.
-The profile is persistent, so Google/Colab login cookies survive normal
-restarts. Keep using this profile for future headed or headless experiments.
+`colabctl` and `open_colab_browser_connection` use a controlled browser with
+CDP port `9333`. By default the project keeps automation in a dedicated Edge
+profile, but this fork can target an existing Chrome profile when you want to
+reuse an authenticated session.
+
+Recommended local Chrome profile for this workstation:
+
+```powershell
+$env:COLAB_MCP_BROWSER_COMMAND="google-chrome-stable"
+$env:COLAB_MCP_BROWSER_USER_DATA_DIR="/home/astra/.config/google-chrome"
+$env:COLAB_MCP_BROWSER_PROFILE="Default"
+$env:COLAB_MCP_CONNECTION_TIMEOUT="180"
+```
 
 ```powershell
 uv run colabctl status
@@ -43,16 +51,16 @@ uv run colabctl smoke-browser
 uv run colabctl smoke-mcp
 ```
 
-The MCP tool `open_colab_browser_connection` can also start the dedicated Edge
+The MCP tool `open_colab_browser_connection` can also start the controlled
 browser directly. `colabctl connect` is primarily a diagnostic and manual repair
 command.
 
 If the dedicated browser is not logged in, these commands return
 `loginRequired: true` with a prompt that the AI/client should show to the user.
-Log into Google/Colab in the Edge window opened by `colabctl`, then rerun the
+Log into Google/Colab in the controlled browser window opened by `colabctl`, then rerun the
 command.
 
-Run browser smoke as part of the local test command when Edge CDP and Colab are available:
+Run browser smoke as part of the local test command when browser CDP and Colab are available:
 
 ```powershell
 uv run colab-mcp-test --browser
@@ -64,7 +72,7 @@ Use `--allow-ambiguous` only when you intentionally have multiple local Colab MC
 uv run colabctl connect --allow-ambiguous
 ```
 
-If you intentionally want to attach to a different already-debuggable Edge,
+If you intentionally want to attach to a different already-debuggable browser,
 pass its port explicitly:
 
 ```powershell

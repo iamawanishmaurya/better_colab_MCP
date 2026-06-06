@@ -1,6 +1,6 @@
 [project]
 name = "colab-mcp"
-version = "1.0.1+fork.0"
+version = "0.1.0"
 description = "A local-first fork of colab-mcp for Colab automation"
 readme = "README.md"
 authors = [

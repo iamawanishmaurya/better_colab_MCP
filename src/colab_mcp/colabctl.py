@@ -3,6 +3,8 @@ import contextlib
 import json
 import os
 from pathlib import Path
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -18,10 +20,22 @@ from websockets.sync.client import connect as websocket_connect
 MCP_STATE = Path(tempfile.gettempdir()) / "colab-mcp-current.json"
 DEFAULT_CDP_PORT = 9333
 DEFAULT_PROFILE = Path.home() / ".codex" / "edge-colab-mcp-profile"
+DEFAULT_CHROME_USER_DATA_DIR = Path.home() / ".config" / "google-chrome"
+BROWSER_COMMAND_ENV = "COLAB_MCP_BROWSER_COMMAND"
+BROWSER_PROFILE_ENV = "COLAB_MCP_BROWSER_PROFILE"
+BROWSER_USER_DATA_DIR_ENV = "COLAB_MCP_BROWSER_USER_DATA_DIR"
+CONNECTION_TIMEOUT_ENV = "COLAB_MCP_CONNECTION_TIMEOUT"
+CHROME_COMMAND_CANDIDATES = (
+    "google-chrome-stable",
+    "google-chrome",
+    "chrome",
+    "chromium",
+    "chromium-browser",
+)
 COLAB_URL_FRAGMENT = "colab.research.google.com"
 LOGIN_REQUIRED_MESSAGE = (
     "Colab is not logged in in the dedicated MCP browser. Ask the user to log "
-    "into Google/Colab in the Edge window opened by colabctl, then rerun the command."
+    "into Google/Colab in the browser window opened by colabctl, then rerun the command."
 )
 
 
@@ -57,6 +71,42 @@ def edge_path() -> Path:
     raise RuntimeError("Microsoft Edge executable was not found.")
 
 
+def resolve_browser_command(command: str) -> list[str]:
+    parts = shlex.split(command)
+    if not parts:
+        raise RuntimeError("Browser command is empty.")
+    executable = parts[0]
+    if Path(executable).exists() or shutil.which(executable):
+        return parts
+    raise RuntimeError(f"Configured browser executable was not found: {executable}")
+
+
+def browser_command_parts() -> list[str]:
+    configured = os.environ.get(BROWSER_COMMAND_ENV)
+    if configured:
+        return resolve_browser_command(configured)
+
+    prefer_chrome = bool(
+        os.environ.get(BROWSER_PROFILE_ENV) or os.environ.get(BROWSER_USER_DATA_DIR_ENV)
+    )
+    if prefer_chrome:
+        for name in CHROME_COMMAND_CANDIDATES:
+            found = shutil.which(name)
+            if found:
+                return [found]
+
+    return [str(edge_path())]
+
+
+def default_user_data_dir() -> Path:
+    configured = os.environ.get(BROWSER_USER_DATA_DIR_ENV)
+    if configured:
+        return Path(configured).expanduser()
+    if os.environ.get(BROWSER_PROFILE_ENV):
+        return DEFAULT_CHROME_USER_DATA_DIR
+    return DEFAULT_PROFILE
+
+
 def cdp_alive(port: int) -> bool:
     try:
         get_json(f"http://127.0.0.1:{port}/json/version", timeout=1)
@@ -65,29 +115,36 @@ def cdp_alive(port: int) -> bool:
         return False
 
 
-def start_edge(port: int, profile: Path, url: str) -> None:
+def start_edge(
+    port: int,
+    profile: Path | None,
+    url: str,
+    *,
+    profile_directory: str | None = None,
+) -> None:
+    profile = profile or default_user_data_dir()
     profile.mkdir(parents=True, exist_ok=True)
     if cdp_alive(port):
         return
-    subprocess.Popen(
-        [
-            str(edge_path()),
-            "--remote-debugging-address=127.0.0.1",
-            f"--remote-debugging-port={port}",
-            f"--user-data-dir={profile}",
-            "--no-first-run",
-            "--new-window",
-            url,
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
+    command = [
+        *browser_command_parts(),
+        "--remote-debugging-address=127.0.0.1",
+        f"--remote-debugging-port={port}",
+        f"--user-data-dir={profile}",
+        "--no-first-run",
+        "--new-window",
+    ]
+    profile_directory = profile_directory or os.environ.get(BROWSER_PROFILE_ENV)
+    if profile_directory:
+        command.append(f"--profile-directory={profile_directory}")
+    command.append(url)
+    subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         if cdp_alive(port):
             return
         time.sleep(0.25)
-    raise TimeoutError(f"Timed out waiting for Edge CDP on port {port}.")
+    raise TimeoutError(f"Timed out waiting for browser CDP on port {port}.")
 
 
 def pages(port: int) -> list[dict[str, Any]]:
@@ -230,7 +287,7 @@ JSON.stringify((()=>{
     email,
     loginRequired,
     loginMessage: loginRequired
-      ? 'Colab login is required in the dedicated MCP browser. Ask the user to log into Google/Colab in that Edge window, then rerun the command.'
+      ? 'Colab login is required in the dedicated MCP browser. Ask the user to log into Google/Colab in that browser window, then rerun the command.'
       : null,
     token: sessionToken,
     port: sessionPort,
@@ -297,7 +354,12 @@ def command_connect(args: argparse.Namespace) -> None:
             f"activeStatePid={state_pid}, otherPids={[p.get('ProcessId') for p in other_processes]}"
         )
     scratch_url = state["scratchUrl"]
-    start_edge(args.port, args.profile, scratch_url)
+    start_edge(
+        args.port,
+        args.profile,
+        scratch_url,
+        profile_directory=args.profile_directory,
+    )
     tab = create_or_get_colab_tab(args.port, scratch_url)
     with CdpSession(tab["webSocketDebuggerUrl"]) as cdp:
         cdp.call("Page.navigate", {"url": scratch_url})
@@ -324,7 +386,9 @@ def command_connect(args: argparse.Namespace) -> None:
                     "email": last.get("email"),
                     "message": LOGIN_REQUIRED_MESSAGE,
                     "promptForAi": LOGIN_REQUIRED_MESSAGE,
-                    "profile": str(args.profile),
+                    "profile": str(args.profile or default_user_data_dir()),
+                    "profileDirectory": args.profile_directory
+                    or os.environ.get(BROWSER_PROFILE_ENV),
                     "edgeCdpPort": args.port,
                 },
                 ensure_ascii=False,
@@ -637,7 +701,7 @@ def command_smoke_browser(args: argparse.Namespace) -> None:
   const body = document.body?.innerText || '';
   const email = window.colabUserEmail || null;
   const loginRequired = !email || email === 'anonymous' || /Sign in|\u767b\u5f55|\u767b\u5165/.test(body);
-  if (loginRequired) return JSON.stringify({ok:false, loginRequired:true, email, message:'Colab login is required in the dedicated MCP browser. Ask the user to log into Google/Colab in that Edge window, then rerun the command.'});
+  if (loginRequired) return JSON.stringify({ok:false, loginRequired:true, email, message:'Colab login is required in the dedicated MCP browser. Ask the user to log into Google/Colab in that browser window, then rerun the command.'});
   const svc = window.colab?.global?.notebook?.colabMcpToolsService;
   if (!svc) return JSON.stringify({ok:false,error:'colabMcpToolsService missing'});
   const tool = n => svc.tools.find(t => t.toolName === n);
@@ -659,7 +723,7 @@ def command_smoke_mcp(args: argparse.Namespace) -> None:
   const body = document.body?.innerText || '';
   const email = window.colabUserEmail || null;
   const loginRequired = !email || email === 'anonymous' || /Sign in|\u767b\u5f55|\u767b\u5165/.test(body);
-  if (loginRequired) return JSON.stringify({ok:false, loginRequired:true, email, message:'Colab login is required in the dedicated MCP browser. Ask the user to log into Google/Colab in that Edge window, then rerun the command.'});
+  if (loginRequired) return JSON.stringify({ok:false, loginRequired:true, email, message:'Colab login is required in the dedicated MCP browser. Ask the user to log into Google/Colab in that browser window, then rerun the command.'});
   const local = window.colab?.global?.notebook?.localColabMcpService;
   if (!local) return JSON.stringify({ok:false,error:'localColabMcpService missing'});
   if (!local.isConnected()) {
@@ -687,7 +751,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--port",
         type=int,
         default=DEFAULT_CDP_PORT,
-        help="Edge CDP port. Defaults to the dedicated Colab MCP browser port.",
+        help="Browser CDP port. Defaults to the dedicated Colab MCP browser port.",
+    )
+    parser.add_argument(
+        "--browser-command",
+        help="Browser executable or command. Overrides COLAB_MCP_BROWSER_COMMAND.",
     )
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -695,8 +763,23 @@ def build_parser() -> argparse.ArgumentParser:
     status.set_defaults(func=command_status)
 
     connect = sub.add_parser("connect")
-    connect.add_argument("--profile", type=Path, default=DEFAULT_PROFILE)
-    connect.add_argument("--timeout", type=float, default=120)
+    connect.add_argument(
+        "--profile",
+        "--user-data-dir",
+        dest="profile",
+        type=Path,
+        default=None,
+        help="Browser user data directory. Defaults to COLAB_MCP_BROWSER_USER_DATA_DIR, Chrome default when --profile-directory is set, or the dedicated browser profile.",
+    )
+    connect.add_argument(
+        "--profile-directory",
+        help="Chrome/Chromium profile directory name, for example Default.",
+    )
+    connect.add_argument(
+        "--timeout",
+        type=float,
+        default=float(os.environ.get(CONNECTION_TIMEOUT_ENV, "180")),
+    )
     connect.add_argument("--allow-ambiguous", action="store_true")
     connect.set_defaults(func=command_connect)
 
@@ -743,6 +826,12 @@ def main() -> None:
         sys.stderr.reconfigure(encoding="utf-8")
     parser = build_parser()
     args = parser.parse_args()
+    if args.browser_command:
+        os.environ[BROWSER_COMMAND_ENV] = args.browser_command
+    if getattr(args, "profile_directory", None):
+        os.environ[BROWSER_PROFILE_ENV] = args.profile_directory
+    if getattr(args, "profile", None):
+        os.environ[BROWSER_USER_DATA_DIR_ENV] = str(args.profile)
     try:
         args.func(args)
     except Exception as exc:
