@@ -20,6 +20,8 @@ from colab_opencode_localhost import DEFAULT_LOCAL_HOST, DEFAULT_LOCAL_PORT
 from colab_opencode_web_terminal import (
     DEFAULT_CWD,
     DEFAULT_DRIVE_FOLDER,
+    DEFAULT_GHOSTTOWN_SESSION_MODE,
+    DEFAULT_GHOSTTOWN_TMUX_SESSION,
     DEFAULT_NOTEBOOK_NAME,
     DEFAULT_PORT,
     DEFAULT_REPO,
@@ -56,6 +58,8 @@ def write_state(args: argparse.Namespace, **updates) -> None:
         "stateFile": str(args.state_file),
         "bridgeLogFile": str(args.bridge_log_file),
         "terminalBackend": args.terminal_backend,
+        "ghosttownSessionMode": args.ghosttown_session_mode,
+        "ghosttownTmuxSession": args.ghosttown_tmux_session,
         "drivePersistence": args.drive_persistence,
         "driveFolder": args.drive_folder,
     })
@@ -96,6 +100,10 @@ def bridge_command(args: argparse.Namespace) -> list[str]:
         args.cwd,
         "--terminal-backend",
         args.terminal_backend,
+        "--ghosttown-session-mode",
+        args.ghosttown_session_mode,
+        "--ghosttown-tmux-session",
+        args.ghosttown_tmux_session,
         "--drive-folder",
         args.drive_folder,
         "--notebook-name",
@@ -332,6 +340,15 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("COLAB_OPENCODE_TERMINAL_BACKEND", DEFAULT_TERMINAL_BACKEND),
     )
     parser.add_argument(
+        "--ghosttown-session-mode",
+        choices=("direct", "tmux"),
+        default=os.environ.get("COLAB_OPENCODE_GHOSTTOWN_SESSION_MODE", DEFAULT_GHOSTTOWN_SESSION_MODE),
+    )
+    parser.add_argument(
+        "--ghosttown-tmux-session",
+        default=os.environ.get("COLAB_OPENCODE_GHOSTTOWN_TMUX_SESSION", DEFAULT_GHOSTTOWN_TMUX_SESSION),
+    )
+    parser.add_argument(
         "--drive-persistence",
         action=argparse.BooleanOptionalAction,
         default=env_bool("COLAB_OPENCODE_DRIVE_PERSISTENCE", True),
@@ -376,6 +393,11 @@ def parse_args() -> argparse.Namespace:
         parser.error("--drive-folder is required when drive persistence is enabled")
     if args.drive_persistence and not args.notebook_name.endswith(".ipynb"):
         parser.error("--notebook-name must end with .ipynb")
+    if args.ghosttown_session_mode == "tmux":
+        if not args.ghosttown_tmux_session:
+            parser.error("--ghosttown-tmux-session is required in tmux mode")
+        if any(char in args.ghosttown_tmux_session for char in "\n\r:"):
+            parser.error("--ghosttown-tmux-session cannot contain newline or ':'")
     return args
 
 

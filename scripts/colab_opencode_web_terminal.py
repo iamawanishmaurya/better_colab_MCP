@@ -26,6 +26,8 @@ DEFAULT_CWD = "/content"
 DEFAULT_DRIVE_FOLDER = "/content/drive/MyDrive/opencode"
 DEFAULT_NOTEBOOK_NAME = "opencode.ipynb"
 DEFAULT_TERMINAL_BACKEND = "ttyd"
+DEFAULT_GHOSTTOWN_SESSION_MODE = "direct"
+DEFAULT_GHOSTTOWN_TMUX_SESSION = "opencode"
 GHOSTTOWN_PACKAGE = "@seflless/ghosttown"
 
 
@@ -89,6 +91,8 @@ def setup_cell_code(
     require_drive: bool = True,
     drive_mount_timeout: int = 180,
     terminal_backend: str = DEFAULT_TERMINAL_BACKEND,
+    ghosttown_session_mode: str = DEFAULT_GHOSTTOWN_SESSION_MODE,
+    ghosttown_tmux_session: str = DEFAULT_GHOSTTOWN_TMUX_SESSION,
 ) -> str:
     return f"""
 import json
@@ -112,9 +116,18 @@ NOTEBOOK_NAME = {notebook_name!r}
 REQUIRE_DRIVE = {require_drive!r}
 DRIVE_MOUNT_TIMEOUT = {drive_mount_timeout!r}
 TERMINAL_BACKEND = {terminal_backend!r}
+GHOSTTOWN_SESSION_MODE = {ghosttown_session_mode!r}
+GHOSTTOWN_TMUX_SESSION = {ghosttown_tmux_session!r}
 GHOSTTOWN_PACKAGE = {GHOSTTOWN_PACKAGE!r}
 if TERMINAL_BACKEND not in {{"ttyd", "ghosttown"}}:
     raise RuntimeError("Unsupported terminal backend: " + repr(TERMINAL_BACKEND))
+if GHOSTTOWN_SESSION_MODE not in {{"direct", "tmux"}}:
+    raise RuntimeError("Unsupported Ghost Town session mode: " + repr(GHOSTTOWN_SESSION_MODE))
+if GHOSTTOWN_SESSION_MODE == "tmux":
+    if not GHOSTTOWN_TMUX_SESSION:
+        raise RuntimeError("Ghost Town tmux mode requires a tmux session name")
+    if any(char in GHOSTTOWN_TMUX_SESSION for char in "\\n\\r:"):
+        raise RuntimeError("Ghost Town tmux session name cannot contain newline or ':'")
 
 LOG_PATH = "/content/opencode-" + TERMINAL_BACKEND + ".log"
 PID_PATH = "/content/opencode-" + TERMINAL_BACKEND + ".pid"
@@ -364,12 +377,20 @@ def install_ttyd():
 
 def install_node_runtime():
     missing = [name for name in ("node", "npm") if not shutil.which(name)]
+    if GHOSTTOWN_SESSION_MODE == "tmux" and not shutil.which("tmux"):
+        missing.append("tmux")
     if missing:
+        packages = "nodejs npm"
+        if GHOSTTOWN_SESSION_MODE == "tmux":
+            packages += " tmux"
         run(
-            "apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm",
+            "apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y " + packages,
             timeout=600,
         )
-    run("node --version && npm --version", timeout=120)
+    version_check = "node --version && npm --version"
+    if GHOSTTOWN_SESSION_MODE == "tmux":
+        version_check += " && tmux -V"
+    run(version_check, timeout=120)
 
 
 def install_ghosttown():
@@ -387,16 +408,64 @@ def install_ghosttown():
 
 def write_ghosttown_shell():
     shell_path = Path("/content/opencode-ghosttown-shell.sh")
-    script = (
-        "#!/usr/bin/env bash\\n"
-        "set -euo pipefail\\n"
-        "export PATH=\\"$HOME/.opencode/bin:$PATH\\"\\n"
-        "cd %s\\n"
-        "exec opencode\\n"
-    ) % shlex.quote(WORKDIR)
+    if GHOSTTOWN_SESSION_MODE == "tmux":
+        launch = opencode_launch_command()
+        script = (
+            "#!/usr/bin/env bash\\n"
+            "set -euo pipefail\\n"
+            "export PATH=\\"$HOME/.opencode/bin:$PATH\\"\\n"
+            "cd %s\\n"
+            "if ! tmux has-session -t %s 2>/dev/null; then\\n"
+            "  tmux new-session -d -s %s -c %s /bin/bash -lc %s\\n"
+            "fi\\n"
+            "exec tmux attach-session -t %s\\n"
+        ) % (
+            shlex.quote(WORKDIR),
+            shlex.quote(GHOSTTOWN_TMUX_SESSION),
+            shlex.quote(GHOSTTOWN_TMUX_SESSION),
+            shlex.quote(WORKDIR),
+            shlex.quote(launch),
+            shlex.quote(GHOSTTOWN_TMUX_SESSION),
+        )
+    else:
+        script = (
+            "#!/usr/bin/env bash\\n"
+            "set -euo pipefail\\n"
+            "export PATH=\\"$HOME/.opencode/bin:$PATH\\"\\n"
+            "cd %s\\n"
+            "exec opencode\\n"
+        ) % shlex.quote(WORKDIR)
     shell_path.write_text(script, encoding="utf-8")
     os.chmod(shell_path, 0o755)
     return str(shell_path)
+
+
+def opencode_launch_command():
+    return (
+        "export PATH=$HOME/.opencode/bin:$PATH; "
+        + "cd "
+        + shlex.quote(WORKDIR)
+        + "; "
+        + "exec opencode"
+    )
+
+
+def ensure_ghosttown_tmux_session():
+    if GHOSTTOWN_SESSION_MODE != "tmux":
+        return False
+    launch = opencode_launch_command()
+    command = (
+        "tmux has-session -t "
+        + shlex.quote(GHOSTTOWN_TMUX_SESSION)
+        + " 2>/dev/null || tmux new-session -d -s "
+        + shlex.quote(GHOSTTOWN_TMUX_SESSION)
+        + " -c "
+        + shlex.quote(WORKDIR)
+        + " /bin/bash -lc "
+        + shlex.quote(launch)
+    )
+    run(command, timeout=30)
+    return True
 
 
 def port_open(port):
@@ -408,13 +477,7 @@ def port_open(port):
 def start_ttyd():
     Path(WORKDIR).mkdir(parents=True, exist_ok=True)
     run(f"fuser -k {{PORT}}/tcp >/dev/null 2>&1 || true", timeout=20, check=False)
-    launch = (
-        "export PATH=$HOME/.opencode/bin:$PATH; "
-        + "cd "
-        + shlex.quote(WORKDIR)
-        + "; "
-        + "exec opencode"
-    )
+    launch = opencode_launch_command()
     command = (
         "nohup ttyd -W -p "
         + str(PORT)
@@ -439,6 +502,7 @@ def start_ttyd():
 def start_ghosttown():
     Path(WORKDIR).mkdir(parents=True, exist_ok=True)
     run(f"fuser -k {{PORT}}/tcp >/dev/null 2>&1 || true", timeout=20, check=False)
+    ensure_ghosttown_tmux_session()
     shell_path = write_ghosttown_shell()
     command = (
         "SHELL="
@@ -494,6 +558,9 @@ result = {{
     "pid": pid,
     "workdir": WORKDIR,
     "terminalBackend": TERMINAL_BACKEND,
+    "ghosttownSessionMode": GHOSTTOWN_SESSION_MODE if TERMINAL_BACKEND == "ghosttown" else None,
+    "ghosttownTmuxSession": GHOSTTOWN_TMUX_SESSION if TERMINAL_BACKEND == "ghosttown" and GHOSTTOWN_SESSION_MODE == "tmux" else None,
+    "ghosttownTmuxAttachCommand": ("tmux attach -t " + GHOSTTOWN_TMUX_SESSION) if TERMINAL_BACKEND == "ghosttown" and GHOSTTOWN_SESSION_MODE == "tmux" else None,
     "drive": DRIVE_SUMMARY,
     "persistenceLinks": PERSISTENCE_LINKS,
     "recoveryFiles": RECOVERY_FILES,
@@ -586,6 +653,8 @@ async def run_setup(args: argparse.Namespace) -> None:
             require_drive=args.require_drive,
             drive_mount_timeout=args.drive_mount_timeout,
             terminal_backend=args.terminal_backend,
+            ghosttown_session_mode=args.ghosttown_session_mode,
+            ghosttown_tmux_session=args.ghosttown_tmux_session,
         )
         add = result_payload(
             await client.call_tool(
@@ -641,6 +710,17 @@ def parse_args() -> argparse.Namespace:
         help="Terminal web backend to start in Colab.",
     )
     parser.add_argument(
+        "--ghosttown-session-mode",
+        choices=("direct", "tmux"),
+        default=os.environ.get("COLAB_OPENCODE_GHOSTTOWN_SESSION_MODE", DEFAULT_GHOSTTOWN_SESSION_MODE),
+        help="For Ghost Town, launch OpenCode directly or through a reusable tmux session.",
+    )
+    parser.add_argument(
+        "--ghosttown-tmux-session",
+        default=os.environ.get("COLAB_OPENCODE_GHOSTTOWN_TMUX_SESSION", DEFAULT_GHOSTTOWN_TMUX_SESSION),
+        help="tmux session name used when --ghosttown-session-mode=tmux.",
+    )
+    parser.add_argument(
         "--drive-persistence",
         action=argparse.BooleanOptionalAction,
         default=env_bool("COLAB_OPENCODE_DRIVE_PERSISTENCE", True),
@@ -687,6 +767,11 @@ def parse_args() -> argparse.Namespace:
         parser.error("--drive-folder is required when drive persistence is enabled")
     if args.drive_persistence and not args.notebook_name.endswith(".ipynb"):
         parser.error("--notebook-name must end with .ipynb")
+    if args.ghosttown_session_mode == "tmux":
+        if not args.ghosttown_tmux_session:
+            parser.error("--ghosttown-tmux-session is required in tmux mode")
+        if any(char in args.ghosttown_tmux_session for char in "\n\r:"):
+            parser.error("--ghosttown-tmux-session cannot contain newline or ':'")
     if not (1 <= args.port <= 65535):
         parser.error("--port must be between 1 and 65535")
     if args.auto_click_delay < 0:

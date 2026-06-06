@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.0 - 2026-06-07
+
+- Added Ghost Town tmux session mode with `--ghosttown-session-mode tmux` and `--ghosttown-tmux-session`.
+- In tmux mode, Ghost Town `/new` browser terminals attach directly to a reusable Colab tmux session running OpenCode, without SSH.
+- Passed Ghost Town tmux controls through the localhost bridge and reconnect supervisor.
+- Documented the tmux workflow and added generated setup-cell coverage for Ghost Town tmux mode.
+
 ## v0.7.0 - 2026-06-06
 
 - Added Drive-backed Opencode persistence by default, creating `/content/drive/MyDrive/opencode`, a persistent project folder, `opencode.ipynb`, recovery script, and Drive-copied session state.

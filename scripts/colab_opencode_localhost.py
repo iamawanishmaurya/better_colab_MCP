@@ -21,6 +21,8 @@ from websockets.sync.client import connect as websocket_connect
 from colab_opencode_web_terminal import (
     DEFAULT_CWD,
     DEFAULT_DRIVE_FOLDER,
+    DEFAULT_GHOSTTOWN_SESSION_MODE,
+    DEFAULT_GHOSTTOWN_TMUX_SESSION,
     DEFAULT_NOTEBOOK_NAME,
     DEFAULT_PORT,
     DEFAULT_REPO,
@@ -354,6 +356,8 @@ async def setup_opencode(client: Client, args: argparse.Namespace) -> dict:
         require_drive=args.require_drive,
         drive_mount_timeout=args.drive_mount_timeout,
         terminal_backend=args.terminal_backend,
+        ghosttown_session_mode=args.ghosttown_session_mode,
+        ghosttown_tmux_session=args.ghosttown_tmux_session,
     )
     add = result_payload(
         await client.call_tool(
@@ -426,6 +430,11 @@ async def run(args: argparse.Namespace) -> None:
     print(f"Colab proxy auth cookies: {json.dumps(cookie_summary, sort_keys=True)}", flush=True)
     runner = await start_local_proxy(remote_url, args.local_host, args.local_port, extra_headers)
     print(f"Opencode backend: {setup.get('terminalBackend')}", flush=True)
+    if setup.get("terminalBackend") == "ghosttown":
+        print(f"Ghost Town session mode: {setup.get('ghosttownSessionMode')}", flush=True)
+        if setup.get("ghosttownTmuxSession"):
+            print(f"Ghost Town tmux session: {setup.get('ghosttownTmuxSession')}", flush=True)
+            print(f"Ghost Town tmux attach command: {setup.get('ghosttownTmuxAttachCommand')}", flush=True)
     print(f"Opencode workdir: {setup.get('workdir')}", flush=True)
     print(f"Opencode recovery files: {json.dumps(setup.get('recoveryFiles') or [])}", flush=True)
     print(f"Opencode Colab proxy URL: {remote_url}", flush=True)
@@ -489,6 +498,15 @@ def parse_args() -> argparse.Namespace:
         default=os.environ.get("COLAB_OPENCODE_TERMINAL_BACKEND", DEFAULT_TERMINAL_BACKEND),
     )
     parser.add_argument(
+        "--ghosttown-session-mode",
+        choices=("direct", "tmux"),
+        default=os.environ.get("COLAB_OPENCODE_GHOSTTOWN_SESSION_MODE", DEFAULT_GHOSTTOWN_SESSION_MODE),
+    )
+    parser.add_argument(
+        "--ghosttown-tmux-session",
+        default=os.environ.get("COLAB_OPENCODE_GHOSTTOWN_TMUX_SESSION", DEFAULT_GHOSTTOWN_TMUX_SESSION),
+    )
+    parser.add_argument(
         "--drive-persistence",
         action=argparse.BooleanOptionalAction,
         default=env_bool("COLAB_OPENCODE_DRIVE_PERSISTENCE", True),
@@ -520,6 +538,11 @@ def parse_args() -> argparse.Namespace:
         parser.error("--drive-folder is required when drive persistence is enabled")
     if args.drive_persistence and not args.notebook_name.endswith(".ipynb"):
         parser.error("--notebook-name must end with .ipynb")
+    if args.ghosttown_session_mode == "tmux":
+        if not args.ghosttown_tmux_session:
+            parser.error("--ghosttown-tmux-session is required in tmux mode")
+        if any(char in args.ghosttown_tmux_session for char in "\n\r:"):
+            parser.error("--ghosttown-tmux-session cannot contain newline or ':'")
     return args
 
 

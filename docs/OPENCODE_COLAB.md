@@ -41,6 +41,7 @@ uv run python scripts/colab_opencode_web_terminal.py --no-auto-click-connect
 uv run python scripts/colab_opencode_web_terminal.py --no-drive-persistence --cwd /content
 uv run python scripts/colab_opencode_web_terminal.py --no-require-drive
 uv run python scripts/colab_opencode_web_terminal.py --terminal-backend ghosttown
+uv run python scripts/colab_opencode_web_terminal.py --terminal-backend ghosttown --ghosttown-session-mode tmux
 ```
 
 Use `--no-require-drive` only for smoke tests or temporary sessions where Drive
@@ -65,11 +66,27 @@ the selected Colab port. Open `/new` on the Ghost Town URL to create a
 web-managed terminal session that launches Opencode in the persistent project
 directory.
 
+To make the Ghost Town browser terminal attach directly to a tmux session in
+Colab, use tmux mode:
+
+```shell
+uv run python scripts/colab_opencode_web_terminal.py \
+  --terminal-backend ghosttown \
+  --ghosttown-session-mode tmux \
+  --ghosttown-tmux-session opencode
+```
+
+In tmux mode, setup installs `tmux`, creates or reuses the named `opencode`
+session, starts OpenCode inside that session, and makes every Ghost Town `/new`
+terminal attach to it. This is still not SSH; it is Ghost Town's browser PTY
+connected to Colab's kernel port proxy.
+
 For localhost access through the local reverse proxy:
 
 ```shell
 uv run python scripts/colab_opencode_localhost.py \
   --terminal-backend ghosttown \
+  --ghosttown-session-mode tmux \
   --local-port 8765
 ```
 
@@ -81,6 +98,7 @@ For supervised reconnects:
 ```shell
 uv run python scripts/colab_opencode_supervisor.py \
   --terminal-backend ghosttown \
+  --ghosttown-session-mode tmux \
   --local-port 8765
 ```
 
@@ -189,6 +207,7 @@ Runtime paths:
 - Backend log: `/content/opencode-ttyd.log` or `/content/opencode-ghosttown.log`
 - Backend PID file: `/content/opencode-ttyd.pid` or `/content/opencode-ghosttown.pid`
 - Ghost Town OpenCode shell: `/content/opencode-ghosttown-shell.sh`
+- Ghost Town tmux attach command: `tmux attach -t opencode`
 
 Requirements:
 

@@ -30,6 +30,24 @@ def test_setup_cell_code_compiles_for_ghosttown_backend():
     assert "opencode-ghosttown-shell.sh" in code
 
 
+def test_setup_cell_code_compiles_for_ghosttown_tmux_mode():
+    code = setup_cell_code(
+        port=7681,
+        cwd="/content",
+        install_timeout=600,
+        terminal_backend="ghosttown",
+        ghosttown_session_mode="tmux",
+        ghosttown_tmux_session="opencode",
+    )
+
+    compile(code, "<opencode-ghosttown-tmux-setup>", "exec")
+    assert "GHOSTTOWN_SESSION_MODE = 'tmux'" in code
+    assert "GHOSTTOWN_TMUX_SESSION = 'opencode'" in code
+    assert "tmux new-session -d -s" in code
+    assert "exec tmux attach-session -t" in code
+    assert "ghosttownTmuxAttachCommand" in code
+
+
 def test_setup_cell_code_can_disable_drive_persistence():
     code = setup_cell_code(
         port=7681,

@@ -761,3 +761,153 @@
 - Step name: v0.7.0 release push verification
 - Action: Committed `feat: add Ghost Town Opencode persistence`, tagged `v0.7.0`, pushed `master` to `fork`, pushed tags to `fork`, and checked `git ls-remote --heads fork master` plus `git ls-remote --tags fork v0.7.0`.
 - Result: Commit `8d4358dc0ca70e99928c043265fc1cc79f2a8371` is present on `fork/master`, and tag `v0.7.0` points to the same commit.
+
+## 2026-06-07T01:58:24+05:30 - Ghost Town tmux request orientation
+
+- Step name: Ghost Town tmux request orientation
+- Action: Checked the workspace path, git status, timestamp, and current Ghost Town/OpenCode/tmux code and docs after the request to run OpenCode through a direct tmux session in the Colab Ghost Town terminal without SSH.
+- Result: Repository `/home/astra/codex/Google-Colab/better_colab_MCP` is clean on `master...fork/master`; current Ghost Town mode launches OpenCode through a web-managed shell wrapper, so the next change should add an explicit tmux attach/create wrapper instead of reverting to an invisible detached tmux process.
+
+## 2026-06-07T01:59:15+05:30 - Ghost Town tmux source confirmation
+
+- Step name: Ghost Town tmux source confirmation
+- Action: Queried npm metadata for `@seflless/ghosttown`, packed version `1.9.1`, and inspected `session-manager.js` plus `/new` and WebSocket connection handling in `cli.js`.
+- Result: Ghost Town `1.9.1` still exposes a web terminal powered by Ghostty's VT100 parser; `/new` creates a Ghost Town session and the first browser connection starts the configured shell, so a generated shell wrapper can attach the browser terminal directly to a named tmux session without SSH.
+
+## 2026-06-07T02:00:02+05:30 - Ghost Town tmux implementation plan
+
+- Step name: Ghost Town tmux implementation plan
+- Action: Read the web setup, localhost bridge, supervisor, tests, changelog, and Opencode Colab docs to plan the tmux mode changes.
+- Result: The implementation will add `--ghosttown-session-mode {direct,tmux}` and `--ghosttown-tmux-session`, pass those through all Opencode entry points, install tmux only for tmux mode, and make the Ghost Town shell wrapper attach to a named `opencode` tmux session that starts OpenCode in the configured Colab project directory.
+
+## 2026-06-07T02:02:06+05:30 - Ghost Town tmux code implementation
+
+- Step name: Ghost Town tmux code implementation
+- Action: Added Ghost Town session mode and tmux session controls to the generated Colab setup cell, web setup CLI, localhost bridge, supervisor, generated-cell tests, docs, changelog, and package version.
+- Result: `--terminal-backend ghosttown --ghosttown-session-mode tmux --ghosttown-tmux-session opencode` now generates a setup cell that installs tmux, creates or reuses a Colab tmux session running OpenCode, and makes Ghost Town `/new` attach to that session; validation is pending.
+
+## 2026-06-07T02:03:03+05:30 - Ghost Town tmux fast validation
+
+- Step name: Ghost Town tmux fast validation
+- Action: Refreshed `uv.lock` with `uv lock`, compiled generated setup cells for `ttyd`, Ghost Town direct mode, and Ghost Town tmux mode, then checked help output for the web setup, localhost bridge, and supervisor CLIs.
+- Result: `uv.lock` now records `colab-mcp v0.8.0`; generated setup cells compiled; all three CLIs show `--ghosttown-session-mode {direct,tmux}` and `--ghosttown-tmux-session`.
+
+## 2026-06-07T02:03:31+05:30 - Ghost Town tmux focused validation
+
+- Step name: Ghost Town tmux focused validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest -q tests/opencode_setup_cell_test.py`.
+- Result: Ruff passed; compileall compiled all source and scripts; focused setup-cell tests passed with `4 passed`.
+
+## 2026-06-07T02:04:00+05:30 - Ghost Town tmux full validation
+
+- Step name: Ghost Town tmux full validation
+- Action: Ran `uv run pytest -q` after adding Ghost Town tmux mode.
+- Result: Full test suite passed with `70 passed` and one existing aiohttp `NotAppKeyWarning`.
+
+## 2026-06-07T02:04:35+05:30 - Live Ghost Town tmux smoke started
+
+- Step name: Live Ghost Town tmux smoke started
+- Action: Confirmed port `8767` was free, preserved the existing direct Ghost Town run on port `8766`, cleared old tmux-mode temp logs, and started `scripts/colab_opencode_localhost.py --terminal-backend ghosttown --ghosttown-session-mode tmux --ghosttown-tmux-session opencode --no-require-drive --colab-port 7683 --local-port 8767` in tmux session `colab-opencode-ghosttown-tmux`.
+- Result: The live tmux-mode bridge is running and writing `/tmp/colab-mcp-opencode-ghosttown-tmux.log`; setup polling is in progress.
+
+## 2026-06-07T02:09:30+05:30 - Live Ghost Town tmux MCP connect failure logged
+
+- Step name: Live Ghost Town tmux MCP connect failure logged
+- Action: Polled the live tmux-mode bridge and inspected the MCP-side log/process state after setup did not reach the Colab runtime.
+- Result: The run failed before executing the generated setup cell with `RuntimeError: Colab MCP did not connect`; created `docs/problems/2026-06-07-ghosttown-tmux-live-mcp-headless-connect-failed.md` with live tokens redacted.
+
+## 2026-06-07T02:10:39+05:30 - Isolated Ghost Town tmux smoke started
+
+- Step name: Isolated Ghost Town tmux smoke started
+- Action: Stopped the failed tmux-mode bridge, confirmed port `8767` was free, inspected the generated tmux wrapper lines, removed `/tmp/colab-mcp-opencode-tmux-profile-copy`, and restarted the live smoke with isolated browser resources: `--browser-profile-copy-dir /tmp/colab-mcp-opencode-tmux-profile-copy --cdp-port 9460`.
+- Result: A new `colab-opencode-ghosttown-tmux` tmux session is running with separate browser profile/CDP state; setup polling is in progress.
+
+## 2026-06-07T02:11:49+05:30 - Isolated Ghost Town tmux auth failure logged
+
+- Step name: Isolated Ghost Town tmux auth failure logged
+- Action: Polled the isolated live smoke after MCP connected.
+- Result: The browser connected to MCP but Colab reported `loginRequired: True` and refused runtime connection; created `docs/problems/2026-06-07-ghosttown-tmux-isolated-profile-login-required.md` with live tokens redacted.
+
+## 2026-06-07T02:14:00+05:30 - Live smoke cleanup issue logged
+
+- Step name: Live smoke cleanup issue logged
+- Action: Stopped the failed tmux-mode bridge and attempted to clean the isolated headless browser with a broad `pkill -f` command.
+- Result: The cleanup command exited with code `-1`, likely from matching its own command line; created `docs/problems/2026-06-07-pkill-browser-cleanup-pattern-self-match.md` and will use explicit PID cleanup instead.
+
+## 2026-06-07T02:16:13+05:30 - Ghost Town tmux closeout orientation
+
+- Step name: Ghost Town tmux closeout orientation
+- Action: Read the completion/verification skill guidance, checked the git status, and reviewed the latest `docs/steps.md` entries.
+- Result: Confirmed the intended feature/docs/test/version edits are present and that the remaining unresolved operational item is the self-matching browser cleanup command from the live smoke attempt.
+
+## 2026-06-07T02:16:47+05:30 - Explicit browser cleanup verified
+
+- Step name: Explicit browser cleanup verified
+- Action: Checked CDP port `9460`, searched for the isolated browser profile process using a guarded regex, and inspected tmux sessions for the failed smoke session.
+- Result: No stale CDP listener, no isolated profile browser process, and no `colab-opencode-ghosttown-tmux` tmux session remained; created `docs/solutions/pkill-browser-cleanup-explicit-pids.md`.
+
+## 2026-06-07T02:17:22+05:30 - Ghost Town tmux diff audit
+
+- Step name: Ghost Town tmux diff audit
+- Action: Ran `git diff --stat`, `git diff --check`, and searched the changed files for the Ghost Town tmux mode wiring and version markers.
+- Result: The diff has no whitespace errors, `v0.8.0` is consistent in `pyproject.toml` and `uv.lock`, and the tmux mode is present across the setup generator, localhost bridge, supervisor, tests, docs, and changelog.
+
+## 2026-06-07T02:18:09+05:30 - Generated cell compile import problem logged
+
+- Step name: Generated cell compile import problem logged
+- Action: Ran the fresh verification pass with lint, bytecode compile, generated setup-cell compile, and pytest.
+- Result: Lint passed, bytecode compile passed, and pytest passed with `70 passed, 1 warning`; the ad hoc generated-cell compile command failed before compilation with `ModuleNotFoundError: No module named 'colab_visible_connect'`, so `docs/problems/2026-06-07-generated-cell-compile-pythonpath.md` was created before retrying with the correct import path.
+
+## 2026-06-07T02:57:11+05:30 - Generated cell compile retry tool call problem logged
+
+- Step name: Generated cell compile retry tool call problem logged
+- Action: Attempted to rerun the generated setup-cell compile check after logging the missing `PYTHONPATH` problem.
+- Result: The retry tool call was malformed before shell execution with `failed to parse function arguments: EOF while parsing a string at line 1 column 341044`; created `docs/problems/2026-06-07-generated-cell-compile-retry-tool-call-malformed.md` and will rerun the check with a short clean command.
+
+## 2026-06-07T02:57:43+05:30 - Generated cell compile wrong argument logged
+
+- Step name: Generated cell compile wrong argument logged
+- Action: Reran the generated setup-cell compile check with a clean `PYTHONPATH=scripts` command.
+- Result: Python imported the helper successfully but failed with `TypeError: setup_cell_code() got an unexpected keyword argument 'auth_token'`; created `docs/problems/2026-06-07-generated-cell-compile-wrong-helper-argument.md` before checking the helper signature.
+
+## 2026-06-07T02:58:27+05:30 - Generated cell compile verification recovered
+
+- Step name: Generated cell compile verification recovered
+- Action: Inspected the `setup_cell_code()` signature and reran the generated setup-cell compile check with `PYTHONPATH=scripts`, `port`, `cwd`, `install_timeout`, and `require_drive=False`.
+- Result: Generated setup cells compiled for `ttyd`, `ghosttown-direct`, and `ghosttown-tmux`; created solution docs for the missing `PYTHONPATH`, wrong helper argument, and malformed retry tool-call issues.
+
+## 2026-06-07T02:59:28+05:30 - Ghost Town tmux final validation
+
+- Step name: Ghost Town tmux final validation
+- Action: Ran `git diff --check`, `uv run ruff check .`, `uv run python -m compileall -q -f src scripts`, the generated setup-cell compile check for `ttyd`, `ghosttown-direct`, and `ghosttown-tmux`, and `uv run pytest -q`.
+- Result: Diff check passed, ruff passed, compileall passed, generated setup cells compiled, and pytest reported `70 passed, 1 warning`; the warning is the existing aiohttp `NotAppKeyWarning` in `scripts/colab_opencode_localhost.py:221`.
+
+## 2026-06-07T02:59:50+05:30 - Live MCP connection solution documented
+
+- Step name: Live MCP connection solution documented
+- Action: Documented the solved portion of the first live Ghost Town tmux smoke failure.
+- Result: Created `docs/solutions/ghosttown-tmux-isolated-cdp-profile.md`; it records that isolated browser state and CDP port `9460` got past the MCP connection failure while linking the remaining Colab login blocker as unresolved.
+
+## 2026-06-07T03:00:40+05:30 - Ghost Town tmux post-solution validation
+
+- Step name: Ghost Town tmux post-solution validation
+- Action: Reran `git diff --check`, `uv run ruff check .`, `uv run python -m compileall -q -f src scripts`, generated setup-cell compilation for `ttyd`, `ghosttown-direct`, and `ghosttown-tmux`, and `uv run pytest -q` after adding the live MCP connection solution doc.
+- Result: All checks passed again; pytest reported `70 passed, 1 warning`, with the same existing aiohttp `NotAppKeyWarning`.
+
+## 2026-06-07T03:01:08+05:30 - Ghost Town tmux pre-stage status
+
+- Step name: Ghost Town tmux pre-stage status
+- Action: Ran `git status --short --branch` and `git diff --stat` before staging.
+- Result: Confirmed the expected feature, docs, version, test, problem, and solution files are dirty before `git add -A`.
+
+## 2026-06-07T03:01:28+05:30 - Ghost Town tmux staged status confirmed
+
+- Step name: Ghost Town tmux staged status confirmed
+- Action: Ran `git add -A` followed by `git status --short --branch`.
+- Result: Confirmed all intended feature, documentation, version, test, problem, and solution files are staged for commit.
+
+## 2026-06-07T03:02:05+05:30 - Ghost Town tmux feature commit created
+
+- Step name: Ghost Town tmux feature commit created
+- Action: Ran `git commit -m "feat: add Ghost Town tmux session mode"`.
+- Result: Created commit `ffc3493` with the Ghost Town tmux session mode implementation, v0.8.0 changelog/version bump, docs, tests, and problem/solution records.
