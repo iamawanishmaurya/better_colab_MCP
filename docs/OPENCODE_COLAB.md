@@ -26,6 +26,7 @@ Useful flags:
 ```shell
 uv run python scripts/colab_opencode_web_terminal.py --port 7682 --cwd /content/project
 uv run python scripts/colab_opencode_web_terminal.py --setup-timeout 1200 --print-url
+uv run python scripts/colab_opencode_web_terminal.py --no-auto-click-connect
 ```
 
 Runtime paths:
@@ -37,6 +38,10 @@ Runtime paths:
 Requirements:
 
 - The Colab browser page must connect to MCP.
+- When Chrome is already running without CDP, the script tries to accept Colab's
+  local MCP Connect dialog through visible-browser Hyprland/ydotool automation.
+  It opens a fresh Chrome window with the scratch URL, then retries `enter`,
+  `tab-enter`, and `tab-tab-enter` unless disabled.
 - The Colab notebook execution slot must be free. If a prior cell is stuck,
   interrupt it in the Colab UI with `Ctrl+M`, then `I`, before running setup.
 - Opencode still needs provider API keys or provider login/configuration before

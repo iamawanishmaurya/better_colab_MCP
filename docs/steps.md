@@ -209,3 +209,195 @@
 - Step name: v0.3.0 pre-commit staging check
 - Action: Ran `git add -A && git status --short --branch`.
 - Result: Git status showed the intended `v0.3.0` changes staged on `master...fork/master`, including the Opencode web terminal script, Opencode documentation, problem/solution logs, step log, changelog, version bump, and lockfile update.
+
+## 2026-06-06T14:31:52+05:30 - Auto-connect baseline
+
+- Step name: Auto-connect baseline
+- Action: Checked repository path, timestamp, git status, and searched memory notes for existing Google-Colab/better_colab_MCP context.
+- Result: Repository is clean on `master...fork/master`; no relevant memory notes were found, so auto-connect work proceeds from current repo state and live evidence.
+
+## 2026-06-06T14:33:42+05:30 - Auto-connect code and reference inspection
+
+- Step name: Auto-connect code and reference inspection
+- Action: Read `src/colab_mcp/websocket_server.py`, `src/colab_mcp/session.py`, and `src/colab_mcp/colabctl.py`; searched source/docs/tests for `mcpProxyToken`, `localColabMcpService`, `sessionStorage`, connect, disconnect, heartbeat, and websocket handling; checked current public references for Colab MCP connection behavior.
+- Result: CDP-controlled flows already set `sessionStorage.mcp_proxy_token` and `sessionStorage.mcp_proxy_port` and call `localColabMcpService.connect()`; non-CDP scripts only open the scratch URL and wait, which leaves the existing Chrome profile on Colab's manual local-MCP Connect dialog. Public references confirm token/port WebSocket auth and single frontend connection, but no documented URL flag to bypass the confirmation dialog.
+
+## 2026-06-06T14:35:33+05:30 - Visible auto-connect implementation
+
+- Step name: Visible auto-connect implementation
+- Action: Added `scripts/colab_visible_connect.py`; updated `scripts/colab_cell_terminal.py`, `scripts/colab_opencode_web_terminal.py`, `docs/TMUX_CELL_TERMINAL.md`, `docs/OPENCODE_COLAB.md`, `CHANGELOG.md`, and `pyproject.toml`; ran `uv lock`.
+- Result: The scripts now default to guarded visible-browser automation for existing Chrome profiles without CDP, focusing the Hyprland Chrome Colab window and retrying `enter`, `tab-enter`, and `tab-tab-enter` to accept the local MCP Connect dialog. New flags/env controls allow disabling and tuning delay, interval, attempts, and target window title; package metadata and lockfile are bumped to `0.4.0`.
+
+## 2026-06-06T14:36:34+05:30 - Auto-connect local validation
+
+- Step name: Auto-connect local validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run python scripts/colab_cell_terminal.py --help`, and `uv run python scripts/colab_opencode_web_terminal.py --help`.
+- Result: Ruff reported `All checks passed!`; compileall compiled `src` and all scripts; both script help outputs show the new `--auto-click-connect`, `--no-auto-click-connect`, delay, interval, attempts, and window-title flags.
+
+## 2026-06-06T14:40:06+05:30 - Visible auto-connect cycle 2 problem log
+
+- Step name: Visible auto-connect cycle 2 problem log
+- Action: Logged `docs/problems/2026-06-06-visible-auto-connect-cycle-2-timeout.md` after the second live auto-connect cycle failed to connect within 120 seconds despite three visible key attempts.
+- Result: The exact cycle output, reproduction steps, environment, and first hypothesis are documented before changing the auto-connect strategy.
+
+## 2026-06-06T14:42:14+05:30 - Visible auto-connect stale-tab fix
+
+- Step name: Visible auto-connect stale-tab fix
+- Action: Updated `scripts/colab_visible_connect.py`, `scripts/colab_cell_terminal.py`, `scripts/colab_opencode_web_terminal.py`, `docs/TMUX_CELL_TERMINAL.md`, `docs/OPENCODE_COLAB.md`, and `CHANGELOG.md`.
+- Result: The fallback now handles multi-tab Chrome windows by opening a fresh visible Chrome window with the target scratch URL via `ydotool`, then sending Connect-dialog keys. Default visible attempts increased from three to four so the first attempt can force the active scratch URL before `enter`, `tab-enter`, and `tab-tab-enter` retries.
+
+## 2026-06-06T14:42:49+05:30 - Stale-tab fix local validation
+
+- Step name: Stale-tab fix local validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run python scripts/colab_cell_terminal.py --auto-click-attempts -1`, and `uv run python scripts/colab_opencode_web_terminal.py --auto-click-interval 0`.
+- Result: Ruff reported `All checks passed!`; compileall compiled `src` and scripts; invalid auto-click attempts and interval values exit with the expected parser errors.
+
+## 2026-06-06T14:47:28+05:30 - Repeated visible auto-connect timeout log
+
+- Step name: Repeated visible auto-connect timeout log
+- Action: Logged `docs/problems/2026-06-06-visible-auto-connect-cycle-2-timeout-repeat.md` after the fixed live probe again failed on cycle 2.
+- Result: The same timeout class has now appeared twice, so the keyboard-only visible auto-connect strategy is paused. Next step is to evaluate distinct solutions before implementing another fix.
+
+## 2026-06-06T14:49:23+05:30 - Auto-connect reconnect strategy implementation
+
+- Step name: Auto-connect reconnect strategy implementation
+- Action: Evaluated five distinct options after the repeated timeout: more keyboard retries, relaunching Chrome with CDP, installing a browser extension/userscript, keeping one persistent MCP connection, and making the local proxy client reconnectable. Updated `src/colab_mcp/session.py`, `tests/session_test.py`, and `CHANGELOG.md`.
+- Result: Chose the reconnectable proxy client because it fixes the observed disconnect-after-connection behavior without requiring a Chrome restart, profile copy, or extension install. `ColabProxyClient` now keeps a reconnect loop, clears stale client state after frontend websocket drops, and can initialize a fresh client when the browser reconnects; tests now cover reconnect after disconnect.
+
+## 2026-06-06T14:50:08+05:30 - Reconnect proxy test failure log
+
+- Step name: Reconnect proxy test failure log
+- Action: Ran `uv run pytest tests/session_test.py::TestColabProxyClient -q`, `uv run ruff check .`, and `uv run python -m compileall -f src scripts`; logged `docs/problems/2026-06-06-reconnect-proxy-tests-failing.md`.
+- Result: Ruff and compileall passed, but three focused proxy-client tests failed because older tests did not set `_client_ready` and the reconnect test used an `AsyncMock` context-manager shape that did not return the intended mock instance.
+
+## 2026-06-06T14:51:23+05:30 - Reconnect proxy follow-up failure log
+
+- Step name: Reconnect proxy follow-up failure log
+- Action: Reran `uv run pytest tests/session_test.py::TestColabProxyClient -q` after adjusting the first test fixtures and updated `docs/problems/2026-06-06-reconnect-proxy-tests-failing.md`.
+- Result: Five focused tests passed and one reconnect sequencing assertion failed because the patched `Client` constructor is also used for `stubbed_mcp_client`, consuming the first side-effect before the proxy reconnect loop starts.
+
+## 2026-06-06T14:52:09+05:30 - Reconnect proxy test solution log
+
+- Step name: Reconnect proxy test solution log
+- Action: Updated `tests/session_test.py`, reran `uv run pytest tests/session_test.py::TestColabProxyClient -q`, and created `docs/solutions/reconnect-proxy-tests-failing.md`.
+- Result: Focused proxy-client tests passed with `6 passed in 3.95s`; the solution documents the stale test model, the adjusted `_client_ready` fixtures, the explicit async context stub, and the corrected `Client` mock side-effect order.
+
+## 2026-06-06T14:56:34+05:30 - Visible auto-connect no-window problem log
+
+- Step name: Visible auto-connect no-window problem log
+- Action: Ran the single-server reconnect live test and logged `docs/problems/2026-06-06-visible-auto-connect-no-colab-window.md` after all four attempts returned `no visible Chrome Colab window`.
+- Result: The exact reconnect test output and hypothesis are documented before changing the helper fallback.
+
+## 2026-06-06T14:57:20+05:30 - Visible auto-connect any-Chrome fallback
+
+- Step name: Visible auto-connect any-Chrome fallback
+- Action: Updated `scripts/colab_visible_connect.py`.
+- Result: When a target scratch URL is available, the helper can now focus any visible Chrome/Chromium window if no Colab-titled window exists, then open the scratch URL in a new visible Chrome window before sending Connect-dialog keys.
+
+## 2026-06-06T14:57:51+05:30 - Any-Chrome fallback focused validation
+
+- Step name: Any-Chrome fallback focused validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest tests/session_test.py::TestColabProxyClient -q`.
+- Result: Ruff reported `All checks passed!`; compileall compiled `src` and scripts; focused reconnect tests passed with `6 passed in 3.20s`.
+
+## 2026-06-06T15:02:46+05:30 - Single-server reconnect cycle 2 problem log
+
+- Step name: Single-server reconnect cycle 2 problem log
+- Action: Ran a single-server live reconnect test and logged `docs/problems/2026-06-06-single-server-reconnect-cycle-2-timeout.md`.
+- Result: Cycle 1 connected, `get_cells` returned `cell_count=1`, closing the scratch tab made `connected=false` after 6 seconds, but cycle 2 did not reconnect after four visible attempts. This shows the local reconnect loop is working but browser-side stale service state still requires a stronger reset/connect path than keyboard automation.
+
+## 2026-06-06T15:11:55+05:30 - Browser-use pivot workspace check
+
+- Step name: Browser-use pivot workspace check
+- Action: Checked the active repo path, timestamp, and `git status --short --branch` after the user requested a browser-use/profile-based path.
+- Result: The repo is `/home/astra/codex/Google-Colab/better_colab_MCP` on `master`; the uncommitted v0.4.0 reconnect and visible auto-connect work is still present and will be preserved while adding the browser-use/CDP route.
+
+## 2026-06-06T15:12:24+05:30 - Browser-use API source check
+
+- Step name: Browser-use API source check
+- Action: Checked browser-use documentation and GitHub search results for Chrome profile and CDP support.
+- Result: browser-use supports `Browser.from_system_chrome(profile_directory=...)`, `user_data_dir`, `profile_directory`, and CDP attachment; its profile implementation copies Chrome profiles to a temporary directory and recommends CDP for already-running or locked profiles.
+
+## 2026-06-06T15:17:10+05:30 - Cookie-backed headless mode safety decision
+
+- Step name: Cookie-backed headless mode safety decision
+- Action: Reviewed the user-provided Google/Colab cookie export as sensitive account material and decided not to store raw cookie values in repository files, logs, docs, commits, or command output.
+- Result: The implementation will accept a local cookie JSON file path supplied at runtime, redact cookie diagnostics, and keep cookie files outside git while using profile/CDP authentication as the safer default path.
+
+## 2026-06-06T15:18:43+05:30 - Headless cookie CDP implementation
+
+- Step name: Headless cookie CDP implementation
+- Action: Updated `src/colab_mcp/session.py` with `COLAB_MCP_BROWSER_HEADLESS`, `COLAB_MCP_BROWSER_COOKIE_FILE`, a dedicated default headless profile path, cookie-file diagnostics, cookie normalization, CDP cookie injection, blank-first cookie-mode launch, and headless Chrome flags.
+- Result: Controlled Chrome can now start headless, import an external cookie export without printing values, navigate to Colab after cookies are set, and still use the existing direct `localColabMcpService.connect()` path to avoid the manual Connect button.
+
+## 2026-06-06T15:19:19+05:30 - Headless cookie unit coverage
+
+- Step name: Headless cookie unit coverage
+- Action: Updated `tests/session_test.py` with dummy-cookie tests for headless launch arguments, blank-first cookie-mode startup, cookie export parsing, SameSite conversion, expiration handling, and redacted diagnostics.
+- Result: The new tests cover the fragile launch/auth pieces without storing or asserting against live Google cookie values.
+
+## 2026-06-06T15:20:18+05:30 - Headless cookie documentation
+
+- Step name: Headless cookie documentation
+- Action: Added `docs/HEADLESS_COOKIE_MODE.md`, linked it from `README.md`, expanded `.gitignore` for local cookie/auth artifacts, and updated the v0.4.0 changelog.
+- Result: The repo now documents the recommended profile/CDP, headless cookie, and visible fallback order; runtime env vars; cookie file format; direct CDP connection sequence; browser-use compatibility; and security notes for cookie exports.
+
+## 2026-06-06T15:21:02+05:30 - Headless cookie focused validation
+
+- Step name: Headless cookie focused validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest tests/session_test.py -q`.
+- Result: Ruff passed, compileall compiled all source/scripts, and the focused session suite passed with `50 passed in 3.19s`.
+
+## 2026-06-06T15:21:48+05:30 - Headless live-test preflight
+
+- Step name: Headless live-test preflight
+- Action: Checked ports `9444`, `9455`, `9456`, and `9457` for prior controlled Chrome processes before live headless verification.
+- Result: No matching controlled Chrome processes needed cleanup on the test ports.
+
+## 2026-06-06T15:26:04+05:30 - Headless dummy-cookie problem log
+
+- Step name: Headless dummy-cookie problem log
+- Action: Stopped the pending dummy-cookie headless test after CDP inspection showed Colab loaded with `email=anonymous`, `loginRequired=true`, `hasService=true`, and `connected=false`; created `docs/problems/2026-06-06-headless-cookie-mode-anonymous-without-real-cookie-file.md`.
+- Result: The failure is documented as an authentication-source problem: the headless/CDP path launched and loaded Colab, but a dummy cookie file cannot produce an active authenticated Colab session.
+
+## 2026-06-06T15:26:32+05:30 - Existing profile CDP preflight
+
+- Step name: Existing profile CDP preflight
+- Action: Checked active Chrome/CDP listeners, Chrome processes, and `/home/astra/.config/google-chrome/Local State` profile metadata.
+- Result: No Chrome CDP listener was active; the `Default` Chrome profile maps to `canbehumanagain@gmail.com` with Gaia name `nothumanatall`, making it available for the next headless profile/CDP verification.
+
+## 2026-06-06T15:29:40+05:30 - Locked real-profile problem log
+
+- Step name: Locked real-profile problem log
+- Action: Stopped the blocked headless real-profile test after CDP port `9456` never opened and Chrome profile lock files showed `/home/astra/.config/google-chrome` was already owned by visible Chrome process `2648973`; created `docs/problems/2026-06-06-headless-existing-profile-locked.md`.
+- Result: The failure is documented as a locked-profile launch problem. The next viable strategies are CDP attach to the already-running browser, a dedicated copied profile, or a real external cookie file in the new headless mode.
+
+## 2026-06-06T15:32:45+05:30 - Copied-profile headless implementation
+
+- Step name: Copied-profile headless implementation
+- Action: Added `COLAB_MCP_BROWSER_COPY_PROFILE` and `COLAB_MCP_BROWSER_PROFILE_COPY_DIR`, implemented best-effort selected-profile copying with cache and lock exclusions, updated tests, and documented copied-profile mode in `docs/HEADLESS_COOKIE_MODE.md`, `README.md`, and `CHANGELOG.md`.
+- Result: The MCP server can now clone the locked `Default` Chrome profile into a dedicated headless profile directory and launch CDP from the clone, matching the browser-use profile-copy strategy without adding browser-use as a hard dependency.
+
+## 2026-06-06T15:33:21+05:30 - Copied-profile focused validation
+
+- Step name: Copied-profile focused validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest tests/session_test.py -q` after implementing copied-profile mode.
+- Result: Ruff passed, compileall compiled all source/scripts, and the focused session suite passed with `51 passed in 6.19s`.
+
+## 2026-06-06T15:36:19+05:30 - Copied-profile live verification
+
+- Step name: Copied-profile live verification
+- Action: Ran a three-cycle live MCP test with headless Chrome on CDP port `9457`, `COLAB_MCP_BROWSER_COPY_PROFILE=1`, source profile `/home/astra/.config/google-chrome` / `Default`, and copy target `/tmp/colab-mcp-profile-copy-live`; stopped the temporary Chrome after verification.
+- Result: All three fresh MCP server cycles connected without manual clicking. Cycle 1 connected in `65.2s`, created and ran a code cell, and found marker output `COPIED_PROFILE_MARKER_CYCLE_1`; cycles 2 and 3 reconnected in `8.2s` and `9.1s` with `connected=True`.
+
+## 2026-06-06T15:38:29+05:30 - Auto-connect solution documentation
+
+- Step name: Auto-connect solution documentation
+- Action: Added solution docs for the headless dummy-cookie auth failure, locked real-profile launch failure, single-server reconnect timeout, visible cycle-2 timeout, visible repeat timeout, and no-Colab-window visible automation failure.
+- Result: Each logged auto-connect problem now links to a solution path showing that copied-profile headless CDP replaces fragile visible key automation and avoids raw cookie storage.
+
+## 2026-06-06T15:39:14+05:30 - Full validation and secret scan
+
+- Step name: Full validation and secret scan
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run pytest -q`, and searched the repository for representative live cookie values from the user-provided export.
+- Result: Ruff passed, compileall compiled all source/scripts, the full test suite passed with `64 passed in 8.47s`, and the scan found only the dummy test string `secret-cookie-value`, not the live cookie values.

@@ -56,6 +56,10 @@ CONNECTION_TIMEOUT_ENV = "COLAB_MCP_CONNECTION_TIMEOUT"
 BROWSER_COMMAND_ENV = "COLAB_MCP_BROWSER_COMMAND"
 BROWSER_PROFILE_ENV = "COLAB_MCP_BROWSER_PROFILE"
 BROWSER_USER_DATA_DIR_ENV = "COLAB_MCP_BROWSER_USER_DATA_DIR"
+BROWSER_HEADLESS_ENV = "COLAB_MCP_BROWSER_HEADLESS"
+BROWSER_COOKIE_FILE_ENV = "COLAB_MCP_BROWSER_COOKIE_FILE"
+BROWSER_COPY_PROFILE_ENV = "COLAB_MCP_BROWSER_COPY_PROFILE"
+BROWSER_PROFILE_COPY_DIR_ENV = "COLAB_MCP_BROWSER_PROFILE_COPY_DIR"
 BROWSER_PRINT_CONNECTION_URL_ENV = "COLAB_MCP_PRINT_CONNECTION_URL"
 EDGE_CDP_PORT_ENV = "COLAB_MCP_EDGE_CDP_PORT"
 EDGE_CDP_URL_CONTAINS_ENV = "COLAB_MCP_EDGE_URL_CONTAINS"
@@ -66,6 +70,7 @@ UI_CONNECTION_TIMEOUT = DEFAULT_UI_CONNECTION_TIMEOUT
 DEFAULT_EDGE_CDP_PORT = "9333"
 DEFAULT_EDGE_PROFILE = Path.home() / ".codex" / "edge-colab-mcp-profile"
 DEFAULT_CHROME_USER_DATA_DIR = Path.home() / ".config" / "google-chrome"
+DEFAULT_HEADLESS_USER_DATA_DIR = Path.home() / ".cache" / "colab-mcp" / "headless-chrome-profile"
 CHROME_COMMAND_CANDIDATES = (
     "google-chrome-stable",
     "google-chrome",
@@ -1026,19 +1031,21 @@ class ColabProxyClient:
         self.stubbed_mcp_client = Client(FastMCP())
         self.proxy_mcp_client: Client | None = None
         self._exit_stack = AsyncExitStack()
+        self._client_ready = asyncio.Event()
+        self._closed = False
         self._start_task = None
 
     def is_connected(self):
-        return self.wss.connection_live.is_set() and self.proxy_mcp_client is not None
+        return (
+            self.wss.connection_live.is_set()
+            and self._client_ready.is_set()
+            and self.proxy_mcp_client is not None
+        )
 
     async def await_proxy_connection(self):
         with contextlib.suppress(asyncio.TimeoutError):
-            # wait for the connection to be live and for the proxy client to fully initialize
-            connection_tasks = asyncio.gather(
-                self.wss.connection_live.wait(), self._start_task
-            )
             await asyncio.wait_for(
-                connection_tasks,
+                self._client_ready.wait(),
                 timeout=_connection_timeout_seconds(),
             )
 
@@ -1049,18 +1056,36 @@ class ColabProxyClient:
         return self.stubbed_mcp_client
 
     async def _start_proxy_client(self):
-        # blocks until a websocket connection is made successfully
-        self.proxy_mcp_client = await self._exit_stack.enter_async_context(
-            Client(ColabTransport(self.wss))
-        )
+        while not self._closed:
+            await self.wss.connection_live.wait()
+            client = None
+            try:
+                async with Client(ColabTransport(self.wss)) as client:
+                    self.proxy_mcp_client = client
+                    self._client_ready.set()
+                    while self.wss.connection_live.is_set() and not self._closed:
+                        await asyncio.sleep(0.25)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logging.info("Colab proxy client disconnected: %s", exc)
+            finally:
+                if self.proxy_mcp_client is client:
+                    self.proxy_mcp_client = None
+                self._client_ready.clear()
+            if not self._closed:
+                await asyncio.sleep(0.25)
 
     async def __aenter__(self):
         self._start_task = asyncio.create_task(self._start_proxy_client())
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
+        self._closed = True
         if self._start_task:
             self._start_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._start_task
         await self._exit_stack.aclose()
 
 
@@ -2988,6 +3013,28 @@ def _browser_command_parts() -> list[str]:
 
 
 def _browser_user_data_dir() -> Path:
+    if _browser_copy_profile():
+        configured = os.environ.get(BROWSER_PROFILE_COPY_DIR_ENV)
+        return Path(configured).expanduser() if configured else DEFAULT_HEADLESS_USER_DATA_DIR
+    configured = os.environ.get(BROWSER_USER_DATA_DIR_ENV)
+    if configured:
+        return Path(configured).expanduser()
+    if os.environ.get(BROWSER_COOKIE_FILE_ENV) or _env_bool(BROWSER_HEADLESS_ENV):
+        return DEFAULT_HEADLESS_USER_DATA_DIR
+    if os.environ.get(BROWSER_PROFILE_ENV):
+        return DEFAULT_CHROME_USER_DATA_DIR
+    return Path(os.environ.get(EDGE_PROFILE_ENV, str(DEFAULT_EDGE_PROFILE))).expanduser()
+
+
+def _browser_profile_directory() -> str | None:
+    return os.environ.get(BROWSER_PROFILE_ENV)
+
+
+def _browser_copy_profile() -> bool:
+    return _env_bool(BROWSER_COPY_PROFILE_ENV)
+
+
+def _browser_source_user_data_dir() -> Path:
     configured = os.environ.get(BROWSER_USER_DATA_DIR_ENV)
     if configured:
         return Path(configured).expanduser()
@@ -2996,8 +3043,245 @@ def _browser_user_data_dir() -> Path:
     return Path(os.environ.get(EDGE_PROFILE_ENV, str(DEFAULT_EDGE_PROFILE))).expanduser()
 
 
-def _browser_profile_directory() -> str | None:
-    return os.environ.get(BROWSER_PROFILE_ENV)
+_COPY_SKIP_DIRS = {
+    "Application Cache",
+    "BrowserMetrics",
+    "Cache",
+    "Code Cache",
+    "Crash Reports",
+    "Crashpad",
+    "DawnCache",
+    "File System",
+    "GPUCache",
+    "GrShaderCache",
+    "GraphiteDawnCache",
+    "Safe Browsing",
+    "ShaderCache",
+}
+_COPY_SKIP_FILES = {
+    "LOCK",
+    "lockfile",
+}
+
+
+def _skip_profile_copy_path(path: Path) -> bool:
+    name = path.name
+    return (
+        name.startswith("Singleton")
+        or name in _COPY_SKIP_DIRS
+        or name in _COPY_SKIP_FILES
+        or name.endswith(".tmp")
+    )
+
+
+def _copy_path_best_effort(source: Path, target: Path, failures: list[dict]) -> int:
+    if _skip_profile_copy_path(source):
+        return 0
+    try:
+        if source.is_symlink():
+            return 0
+        if source.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+            copied = 0
+            for child in source.iterdir():
+                copied += _copy_path_best_effort(child, target / child.name, failures)
+            return copied
+        if not source.is_file():
+            return 0
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, target)
+        return 1
+    except OSError as exc:
+        failures.append({"path": str(source), "error": str(exc)})
+        return 0
+
+
+def _copy_browser_profile(source: Path, target: Path, profile_directory: str | None) -> dict:
+    if not source.exists():
+        raise FileNotFoundError(f"Chrome user data dir does not exist: {source}")
+    if source.resolve() == target.resolve():
+        raise ValueError("Profile copy target must be different from the source user data dir.")
+    if target.exists():
+        shutil.rmtree(target)
+    target.mkdir(parents=True, exist_ok=True)
+
+    failures: list[dict] = []
+    copied = 0
+    root_files = ["Local State", "First Run"]
+    for file_name in root_files:
+        root_file = source / file_name
+        if root_file.exists():
+            copied += _copy_path_best_effort(root_file, target / file_name, failures)
+
+    selected_profile = profile_directory or "Default"
+    profile_source = source / selected_profile
+    if profile_source.exists():
+        copied += _copy_path_best_effort(profile_source, target / selected_profile, failures)
+    else:
+        failures.append(
+            {
+                "path": str(profile_source),
+                "error": "selected profile directory does not exist",
+            }
+        )
+
+    return {
+        "source": str(source),
+        "target": str(target),
+        "profileDirectory": selected_profile,
+        "filesCopied": copied,
+        "failures": failures[:20],
+        "truncatedFailures": max(0, len(failures) - 20),
+    }
+
+
+def _prepare_browser_user_data_dir() -> tuple[Path, dict | None]:
+    profile = _browser_user_data_dir()
+    if not _browser_copy_profile():
+        profile.mkdir(parents=True, exist_ok=True)
+        return profile, None
+    summary = _copy_browser_profile(
+        _browser_source_user_data_dir(),
+        profile,
+        _browser_profile_directory(),
+    )
+    return profile, summary
+
+
+def _browser_cookie_file() -> Path | None:
+    configured = os.environ.get(BROWSER_COOKIE_FILE_ENV)
+    if not configured:
+        return None
+    return Path(configured).expanduser()
+
+
+def _browser_headless() -> bool:
+    return _env_bool(BROWSER_HEADLESS_ENV)
+
+
+def _load_browser_cookies() -> list[dict]:
+    cookie_file = _browser_cookie_file()
+    if cookie_file is None:
+        return []
+    with cookie_file.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+    cookies = payload.get("cookies") if isinstance(payload, dict) else payload
+    if not isinstance(cookies, list):
+        raise ValueError("Cookie file must contain a JSON list or an object with a cookies list.")
+    normalized = []
+    for cookie in cookies:
+        if not isinstance(cookie, dict):
+            continue
+        name = cookie.get("name")
+        value = cookie.get("value")
+        if not isinstance(name, str) or not name or value is None:
+            continue
+        normalized.append(cookie)
+    return normalized
+
+
+def _cookie_summary(cookies: list[dict]) -> dict:
+    domains = sorted(
+        {str(cookie.get("domain")) for cookie in cookies if cookie.get("domain")}
+    )
+    names = sorted({str(cookie.get("name")) for cookie in cookies if cookie.get("name")})
+    return {
+        "count": len(cookies),
+        "domains": domains[:20],
+        "names": names[:20],
+        "truncatedDomains": max(0, len(domains) - 20),
+        "truncatedNames": max(0, len(names) - 20),
+    }
+
+
+def _cookie_file_diagnostics() -> dict:
+    cookie_file = _browser_cookie_file()
+    if cookie_file is None:
+        return {"configured": False}
+    diagnostics = {
+        "configured": True,
+        "path": str(cookie_file),
+        "exists": cookie_file.exists(),
+    }
+    if not cookie_file.exists():
+        return diagnostics
+    try:
+        diagnostics.update(_cookie_summary(_load_browser_cookies()))
+    except Exception as exc:
+        diagnostics["error"] = str(exc)
+    return diagnostics
+
+
+def _cookie_same_site(value) -> str | None:
+    if value is None:
+        return None
+    normalized = str(value).strip().lower().replace("-", "_")
+    if normalized in {"lax"}:
+        return "Lax"
+    if normalized in {"strict"}:
+        return "Strict"
+    if normalized in {"none", "no_restriction", "no_restrictions"}:
+        return "None"
+    return None
+
+
+def _cookie_expiration(cookie: dict) -> float | None:
+    if cookie.get("session"):
+        return None
+    raw = cookie.get("expirationDate", cookie.get("expires", cookie.get("expiry")))
+    if raw is None:
+        return None
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _cookie_cdp_params(cookie: dict) -> dict:
+    params = {
+        "name": str(cookie["name"]),
+        "value": str(cookie.get("value", "")),
+        "path": str(cookie.get("path") or "/"),
+    }
+    domain = cookie.get("domain")
+    if domain:
+        params["domain"] = str(domain)
+    expires = _cookie_expiration(cookie)
+    if expires is not None:
+        params["expires"] = expires
+    same_site = _cookie_same_site(cookie.get("sameSite"))
+    if same_site:
+        params["sameSite"] = same_site
+    for key in ("secure", "httpOnly"):
+        if key in cookie:
+            params[key] = bool(cookie[key])
+    return params
+
+
+def _apply_browser_cookies(websocket_url: str) -> dict:
+    cookies = _load_browser_cookies()
+    summary = _cookie_summary(cookies)
+    failures = []
+    _edge_cdp_call(websocket_url, "Network.enable", {})
+    for cookie in cookies:
+        name = str(cookie.get("name") or "<unnamed>")
+        domain = str(cookie.get("domain") or "")
+        try:
+            result = _edge_cdp_call(
+                websocket_url,
+                "Network.setCookie",
+                _cookie_cdp_params(cookie),
+            )
+            if result and result.get("success") is False:
+                failures.append({"name": name, "domain": domain, "error": "setCookie returned false"})
+        except Exception as exc:
+            failures.append({"name": name, "domain": domain, "error": str(exc)})
+    return {
+        **summary,
+        "applied": max(0, summary["count"] - len(failures)),
+        "failures": failures[:10],
+        "truncatedFailures": max(0, len(failures) - 10),
+    }
 
 
 def _browser_diagnostics() -> dict:
@@ -3011,6 +3295,17 @@ def _browser_diagnostics() -> dict:
         "command": command,
         "userDataDir": str(_browser_user_data_dir()),
         "profileDirectory": _browser_profile_directory(),
+        "headless": _browser_headless(),
+        "copyProfile": {
+            "enabled": _browser_copy_profile(),
+            "sourceUserDataDir": str(_browser_source_user_data_dir())
+            if _browser_copy_profile()
+            else None,
+            "targetUserDataDir": str(_browser_user_data_dir())
+            if _browser_copy_profile()
+            else None,
+        },
+        "cookieFile": _cookie_file_diagnostics(),
         "cdpPort": os.environ.get(EDGE_CDP_PORT_ENV, DEFAULT_EDGE_CDP_PORT),
         "urlContains": os.environ.get(
             EDGE_CDP_URL_CONTAINS_ENV, "colab.research.google.com"
@@ -3025,8 +3320,7 @@ def _browser_diagnostics() -> dict:
 
 
 def _controlled_browser_command(url: str, *, port: str) -> list[str]:
-    profile = _browser_user_data_dir()
-    profile.mkdir(parents=True, exist_ok=True)
+    profile, _copy_summary = _prepare_browser_user_data_dir()
     command = [
         *_browser_command_parts(),
         "--remote-debugging-address=127.0.0.1",
@@ -3035,6 +3329,15 @@ def _controlled_browser_command(url: str, *, port: str) -> list[str]:
         "--no-first-run",
         "--new-window",
     ]
+    if _browser_headless():
+        command.extend(
+            [
+                "--headless=new",
+                "--disable-gpu",
+                "--disable-dev-shm-usage",
+                "--window-size=1440,1000",
+            ]
+        )
     profile_directory = _browser_profile_directory()
     if profile_directory:
         command.append(f"--profile-directory={profile_directory}")
@@ -3054,7 +3357,8 @@ def _ensure_controlled_edge(url: str, *, port: str) -> None:
         "CREATE_BREAKAWAY_FROM_JOB",
     ):
         creationflags |= getattr(subprocess, flag_name, 0)
-    command = _controlled_browser_command(url, port=port)
+    launch_url = "about:blank" if _browser_cookie_file() is not None else url
+    command = _controlled_browser_command(launch_url, port=port)
     if _env_bool(BROWSER_PRINT_CONNECTION_URL_ENV):
         print(f"Colab MCP connection URL: {url}", file=sys.stderr, flush=True)
     subprocess.Popen(
@@ -4166,6 +4470,7 @@ def _navigate_controlled_edge(
     url_contains = os.environ.get(EDGE_CDP_URL_CONTAINS_ENV, "colab.research.google.com")
     try:
         _ensure_controlled_edge(url, port=port)
+        cookie_file = _browser_cookie_file()
         pages = [
             tab
             for tab in _cdp_json(f"http://127.0.0.1:{port}/json/list")
@@ -4176,7 +4481,8 @@ def _navigate_controlled_edge(
             None,
         )
         if target is None:
-            encoded_url = urllib.parse.quote(url, safe="")
+            initial_url = "about:blank" if cookie_file is not None else url
+            encoded_url = urllib.parse.quote(initial_url, safe="")
             target = _cdp_json(
                 f"http://127.0.0.1:{port}/json/new?{encoded_url}", method="PUT"
             )
@@ -4190,14 +4496,19 @@ def _navigate_controlled_edge(
                     (tab for tab in pages if url_contains in tab.get("url", "")),
                     None,
                 )
-            if token is None or mcp_port is None:
-                return True
             if target is None:
                 return False
+            if cookie_file is not None:
+                _apply_browser_cookies(target["webSocketDebuggerUrl"])
+                _edge_cdp_call(target["webSocketDebuggerUrl"], "Page.navigate", {"url": url})
+            if token is None or mcp_port is None:
+                return True
             return _connect_colab_tab(
                 target["webSocketDebuggerUrl"], url, str(token), str(mcp_port)
             )
         _cdp_request(f"http://127.0.0.1:{port}/json/activate/{target['id']}")
+        if cookie_file is not None:
+            _apply_browser_cookies(target["webSocketDebuggerUrl"])
         _edge_cdp_call(target["webSocketDebuggerUrl"], "Page.navigate", {"url": url})
         if token is not None and mcp_port is not None:
             return _connect_colab_tab(

@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.0 - 2026-06-06
+
+- Added headless Chrome/CDP auth mode with `COLAB_MCP_BROWSER_HEADLESS`, `COLAB_MCP_BROWSER_COOKIE_FILE`, blank-first launch, and cookie import before Colab navigation.
+- Added `COLAB_MCP_BROWSER_COPY_PROFILE` and `COLAB_MCP_BROWSER_PROFILE_COPY_DIR` to clone a locked Chrome profile into a dedicated headless/CDP profile, matching the practical browser-use approach without depending on browser-use at runtime.
+- Added redacted cookie diagnostics and `.gitignore` coverage for local cookie/auth artifacts.
+- Documented browser-use compatibility and why this fork uses direct CDP for deterministic Colab MCP connection instead of adding browser-use as a required runtime dependency.
+- Added visible-browser auto-connect fallback for Colab's local MCP Connect dialog when Chrome is already running without CDP.
+- Added guarded Hyprland/ydotool automation that can open the scratch URL in a fresh visible Chrome window, then retry `enter`, `tab-enter`, and `tab-tab-enter` strategies.
+- Added CLI/env controls for auto-connect delay, interval, attempts, target window title, and disabling visible automation.
+- Made the Colab proxy client reconnectable after frontend WebSocket drops instead of treating the first frontend connection as a one-shot lifetime.
+
 ## v0.3.0 - 2026-06-06
 
 - Added `scripts/colab_opencode_web_terminal.py` to install Opencode in Colab and expose it through a `ttyd` browser PTY.

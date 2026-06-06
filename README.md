@@ -19,6 +19,7 @@ This fork extends the upstream static Colab MCP baseline with:
 - runtime file list/stat/delete/directory tools
 - GPU checks, snapshots, and monitor jobs
 - environment variable helpers and runtime restart/shutdown tools
+- headless Chrome/CDP cookie-file auth for non-visible Colab sessions
 
 ## Project Layout
 
@@ -53,6 +54,10 @@ MCP client configuration:
         "COLAB_MCP_BROWSER_COMMAND": "google-chrome-stable",
         "COLAB_MCP_BROWSER_USER_DATA_DIR": "/home/astra/.config/google-chrome",
         "COLAB_MCP_BROWSER_PROFILE": "Default",
+        "COLAB_MCP_BROWSER_HEADLESS": "0",
+        "COLAB_MCP_BROWSER_COOKIE_FILE": "",
+        "COLAB_MCP_BROWSER_COPY_PROFILE": "0",
+        "COLAB_MCP_BROWSER_PROFILE_COPY_DIR": "",
         "COLAB_MCP_CONNECTION_TIMEOUT": "180",
         "COLAB_MCP_EDGE_CDP_PORT": "9333",
         "COLAB_MCP_EDGE_URL_CONTAINS": "colab.research.google.com"
@@ -63,6 +68,8 @@ MCP client configuration:
 ```
 
 Replace `<path-to-colab_mcp>` with the absolute path to your local checkout.
+
+For a non-visible authenticated browser, see `docs/HEADLESS_COOKIE_MODE.md`.
 
 ## Runtime Readiness
 

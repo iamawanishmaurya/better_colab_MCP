@@ -238,6 +238,128 @@ class TestControlledEdgeLaunch:
         assert "--profile-directory=Default" in command
         assert command[-1] == "https://example.test"
 
+    def test_controlled_browser_command_supports_headless_cookie_profile(
+        self, monkeypatch, tmp_path
+    ):
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text("[]", encoding="utf-8")
+        monkeypatch.setenv(session.BROWSER_COMMAND_ENV, "google-chrome-stable")
+        monkeypatch.setenv(session.BROWSER_HEADLESS_ENV, "1")
+        monkeypatch.setenv(session.BROWSER_COOKIE_FILE_ENV, str(cookie_file))
+        monkeypatch.delenv(session.BROWSER_USER_DATA_DIR_ENV, raising=False)
+        monkeypatch.setattr(
+            session.shutil,
+            "which",
+            lambda name: "/usr/bin/google-chrome-stable"
+            if name == "google-chrome-stable"
+            else None,
+        )
+
+        command = session._controlled_browser_command(
+            "https://example.test", port="9444"
+        )
+
+        assert command[0] == "google-chrome-stable"
+        assert "--remote-debugging-port=9444" in command
+        assert f"--user-data-dir={session.DEFAULT_HEADLESS_USER_DATA_DIR}" in command
+        assert "--headless=new" in command
+        assert "--window-size=1440,1000" in command
+
+    def test_ensure_controlled_edge_launches_blank_first_for_cookie_mode(
+        self, monkeypatch, tmp_path
+    ):
+        alive_results = iter([False, True])
+        popen = Mock()
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text("[]", encoding="utf-8")
+        profile = tmp_path / "headless-profile"
+        monkeypatch.setenv(session.BROWSER_COMMAND_ENV, "google-chrome-stable")
+        monkeypatch.setenv(session.BROWSER_USER_DATA_DIR_ENV, str(profile))
+        monkeypatch.setenv(session.BROWSER_COOKIE_FILE_ENV, str(cookie_file))
+        monkeypatch.setattr(
+            session, "_cdp_alive", Mock(side_effect=lambda _port: next(alive_results))
+        )
+        monkeypatch.setattr(
+            session.shutil,
+            "which",
+            lambda name: "/usr/bin/google-chrome-stable"
+            if name == "google-chrome-stable"
+            else None,
+        )
+        monkeypatch.setattr(session.subprocess, "Popen", popen)
+        monkeypatch.setattr(session.time, "sleep", Mock())
+
+        session._ensure_controlled_edge("https://example.test", port="9444")
+
+        command = popen.call_args.args[0]
+        assert f"--user-data-dir={profile}" in command
+        assert command[-1] == "about:blank"
+
+    def test_copy_profile_mode_launches_from_copied_profile(self, monkeypatch, tmp_path):
+        source = tmp_path / "source"
+        target = tmp_path / "target"
+        (source / "Default" / "Network").mkdir(parents=True)
+        (source / "Local State").write_text('{"profile": {}}', encoding="utf-8")
+        (source / "SingletonLock").write_text("locked", encoding="utf-8")
+        (source / "Default" / "Preferences").write_text("{}", encoding="utf-8")
+        (source / "Default" / "Network" / "Cookies").write_text("cookies", encoding="utf-8")
+        (source / "Default" / "Cache").mkdir()
+        (source / "Default" / "Cache" / "ignored").write_text("cache", encoding="utf-8")
+        monkeypatch.setenv(session.BROWSER_COMMAND_ENV, "google-chrome-stable")
+        monkeypatch.setenv(session.BROWSER_USER_DATA_DIR_ENV, str(source))
+        monkeypatch.setenv(session.BROWSER_PROFILE_ENV, "Default")
+        monkeypatch.setenv(session.BROWSER_COPY_PROFILE_ENV, "1")
+        monkeypatch.setenv(session.BROWSER_PROFILE_COPY_DIR_ENV, str(target))
+        monkeypatch.setattr(
+            session.shutil,
+            "which",
+            lambda name: "/usr/bin/google-chrome-stable"
+            if name == "google-chrome-stable"
+            else None,
+        )
+
+        command = session._controlled_browser_command(
+            "https://example.test", port="9457"
+        )
+
+        assert f"--user-data-dir={target}" in command
+        assert (target / "Local State").exists()
+        assert (target / "Default" / "Preferences").exists()
+        assert (target / "Default" / "Network" / "Cookies").exists()
+        assert not (target / "SingletonLock").exists()
+        assert not (target / "Default" / "Cache" / "ignored").exists()
+
+    def test_cookie_file_diagnostics_redacts_values(self, monkeypatch, tmp_path):
+        cookie_file = tmp_path / "cookies.json"
+        cookie_file.write_text(
+            json.dumps(
+                [
+                    {
+                        "domain": ".google.com",
+                        "expirationDate": 1814601961.536875,
+                        "httpOnly": True,
+                        "name": "SID",
+                        "path": "/",
+                        "sameSite": "no_restriction",
+                        "secure": True,
+                        "value": "secret-cookie-value",
+                    }
+                ]
+            ),
+            encoding="utf-8",
+        )
+        monkeypatch.setenv(session.BROWSER_COOKIE_FILE_ENV, str(cookie_file))
+
+        diagnostics = session._cookie_file_diagnostics()
+        params = session._cookie_cdp_params(session._load_browser_cookies()[0])
+
+        assert diagnostics["count"] == 1
+        assert diagnostics["domains"] == [".google.com"]
+        assert diagnostics["names"] == ["SID"]
+        assert "secret-cookie-value" not in json.dumps(diagnostics)
+        assert params["sameSite"] == "None"
+        assert params["expires"] == 1814601961.536875
+
     def test_connection_timeout_uses_env(self, monkeypatch):
         monkeypatch.setenv(session.CONNECTION_TIMEOUT_ENV, "240")
 
@@ -251,12 +373,14 @@ class TestColabProxyClient:
         mock_wss.connection_live.set()
         assert client.is_connected() is False
         client.proxy_mcp_client = Mock()
+        client._client_ready.set()
         assert client.is_connected() is True
 
     def test_client_factory_connection_live(self, mock_wss):
         mock_wss.connection_live.set()
         client = session.ColabProxyClient(mock_wss)
         client.proxy_mcp_client = Mock()
+        client._client_ready.set()
 
         assert client.client_factory() is client.proxy_mcp_client
 
@@ -267,11 +391,9 @@ class TestColabProxyClient:
     @pytest.mark.asyncio
     async def test_await_proxy_connection(self, mock_wss):
         client = session.ColabProxyClient(mock_wss)
-        client._start_task = asyncio.create_task(asyncio.sleep(0.01))
-        mock_wss.connection_live.set()
+        client._client_ready.set()
         with patch("colab_mcp.session.UI_CONNECTION_TIMEOUT", 0.1):
             await client.await_proxy_connection()
-        await client._start_task
 
     @pytest.mark.asyncio
     @patch("colab_mcp.session.Client")
@@ -280,13 +402,57 @@ class TestColabProxyClient:
         self, mock_colab_transport, mock_client, mock_wss
     ):
         mock_client.return_value.__aenter__ = AsyncMock()
+        mock_client.return_value.__aenter__.return_value = mock_client.return_value
+        mock_client.return_value.__aexit__ = AsyncMock()
         client = session.ColabProxyClient(mock_wss)
         mock_wss.connection_live.set()
         async with client:
-            await client._start_task
+            await asyncio.wait_for(client._client_ready.wait(), timeout=0.5)
+            assert client.proxy_mcp_client is mock_client.return_value
+            mock_wss.connection_live.clear()
+            await asyncio.sleep(0.3)
 
         mock_colab_transport.assert_called_once_with(mock_wss)
         mock_client.assert_called_with(mock_colab_transport.return_value)
+
+    @pytest.mark.asyncio
+    @patch("colab_mcp.session.Client")
+    @patch("colab_mcp.session.ColabTransport", spec=session.ColabTransport)
+    async def test_start_proxy_client_reconnects_after_disconnect(
+        self, mock_colab_transport, mock_client, mock_wss
+    ):
+        class AsyncClientContext:
+            def __init__(self, name):
+                self.name = name
+                self.entered = False
+                self.exited = False
+
+            async def __aenter__(self):
+                self.entered = True
+                return self
+
+            async def __aexit__(self, exc_type, exc, tb):
+                self.exited = True
+
+        stubbed_client = Mock()
+        clients = [AsyncClientContext("first"), AsyncClientContext("second")]
+        mock_client.side_effect = [stubbed_client, *clients]
+
+        client = session.ColabProxyClient(mock_wss)
+        async with client:
+            mock_wss.connection_live.set()
+            await asyncio.wait_for(client._client_ready.wait(), timeout=0.5)
+            assert client.proxy_mcp_client is clients[0]
+            mock_wss.connection_live.clear()
+            await asyncio.sleep(0.35)
+            assert client.is_connected() is False
+
+            mock_wss.connection_live.set()
+            await asyncio.wait_for(client._client_ready.wait(), timeout=0.5)
+            assert client.proxy_mcp_client is clients[1]
+
+        assert mock_colab_transport.call_count == 2
+        assert mock_client.call_count == 3
 
 
 class TestColabTransport:

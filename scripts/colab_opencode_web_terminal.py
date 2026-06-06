@@ -15,6 +15,8 @@ import time
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 
+from colab_visible_connect import visible_connect_attempt
+
 
 DEFAULT_REPO = Path(__file__).resolve().parents[1]
 DEFAULT_CONNECTION_TIMEOUT = 600
@@ -238,6 +240,8 @@ async def connect_browser(client: Client, args: argparse.Namespace) -> None:
     print(f"Connection URL: {display_url}", flush=True)
 
     start = time.monotonic()
+    next_auto_connect = start + args.auto_click_delay
+    auto_connect_attempts = 0
     while time.monotonic() - start < args.connection_timeout:
         await asyncio.sleep(args.connect_poll_interval)
         info = result_payload(await client.call_tool("get_connection_info", {}))
@@ -245,6 +249,19 @@ async def connect_browser(client: Client, args: argparse.Namespace) -> None:
         print(f"connected={bool(info.get('connected'))} elapsed={elapsed}s", flush=True)
         if info.get("connected"):
             return
+        if (
+            args.auto_click_connect
+            and auto_connect_attempts < args.auto_click_attempts
+            and time.monotonic() >= next_auto_connect
+        ):
+            result = visible_connect_attempt(
+                attempt_index=auto_connect_attempts,
+                title_filter=args.auto_click_window_title,
+                target_url=scratch_url,
+            )
+            auto_connect_attempts += 1
+            next_auto_connect = time.monotonic() + args.auto_click_interval
+            print(f"Visible MCP auto-connect attempt {auto_connect_attempts}: {result.as_log()}", flush=True)
     raise RuntimeError("Browser did not connect to the MCP server.")
 
 
@@ -320,6 +337,17 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
     parser.add_argument("--cwd", default="/content")
     parser.add_argument("--print-url", action="store_true", default=os.environ.get("COLAB_MCP_PRINT_CONNECTION_URL") == "1")
+    parser.add_argument(
+        "--auto-click-connect",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("COLAB_MCP_AUTO_CLICK_CONNECT", "1").strip().lower()
+        not in {"0", "false", "no", "off"},
+        help="Use visible-browser key automation to accept Colab's local MCP Connect dialog when CDP is unavailable.",
+    )
+    parser.add_argument("--auto-click-delay", type=int, default=int(os.environ.get("COLAB_MCP_AUTO_CLICK_DELAY", "8")))
+    parser.add_argument("--auto-click-interval", type=int, default=int(os.environ.get("COLAB_MCP_AUTO_CLICK_INTERVAL", "8")))
+    parser.add_argument("--auto-click-attempts", type=int, default=int(os.environ.get("COLAB_MCP_AUTO_CLICK_ATTEMPTS", "4")))
+    parser.add_argument("--auto-click-window-title", default=os.environ.get("COLAB_MCP_AUTO_CLICK_WINDOW_TITLE", "Colab"))
     parser.add_argument("--log-file", default="/tmp/colab-mcp-opencode-web-terminal.log")
     args = parser.parse_args()
     if args.connection_timeout <= 0:
@@ -332,6 +360,12 @@ def parse_args() -> argparse.Namespace:
         parser.error("--install-timeout must be greater than 0")
     if not (1 <= args.port <= 65535):
         parser.error("--port must be between 1 and 65535")
+    if args.auto_click_delay < 0:
+        parser.error("--auto-click-delay must be greater than or equal to 0")
+    if args.auto_click_interval <= 0:
+        parser.error("--auto-click-interval must be greater than 0")
+    if args.auto_click_attempts < 0:
+        parser.error("--auto-click-attempts must be greater than or equal to 0")
     return args
 
 

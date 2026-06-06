@@ -17,6 +17,8 @@ import time
 from fastmcp import Client
 from fastmcp.client.transports import StdioTransport
 
+from colab_visible_connect import visible_connect_attempt
+
 
 DEFAULT_REPO = Path(__file__).resolve().parents[1]
 DEFAULT_CWD = "/content"
@@ -129,10 +131,25 @@ async def connect_browser(client: Client, args: argparse.Namespace) -> bool:
 
     start = time.monotonic()
     next_status = start
+    next_auto_connect = start + args.auto_click_delay
+    auto_connect_attempts = 0
     while True:
         elapsed = int(time.monotonic() - start)
         if elapsed >= args.connection_timeout:
             return False
+        if (
+            args.auto_click_connect
+            and auto_connect_attempts < args.auto_click_attempts
+            and time.monotonic() >= next_auto_connect
+        ):
+            result = visible_connect_attempt(
+                attempt_index=auto_connect_attempts,
+                title_filter=args.auto_click_window_title,
+                target_url=scratch_url,
+            )
+            auto_connect_attempts += 1
+            next_auto_connect = time.monotonic() + args.auto_click_interval
+            print(f"Visible MCP auto-connect attempt {auto_connect_attempts}: {result.as_log()}", flush=True)
         if time.monotonic() >= next_status:
             print(
                 "Waiting for browser MCP connection "
@@ -261,6 +278,17 @@ def parse_args() -> argparse.Namespace:
         default=int(os.environ.get("COLAB_MCP_CONNECT_STATUS_INTERVAL", str(DEFAULT_CONNECT_STATUS_INTERVAL))),
     )
     parser.add_argument("--print-url", action="store_true", default=os.environ.get("COLAB_MCP_PRINT_CONNECTION_URL") == "1")
+    parser.add_argument(
+        "--auto-click-connect",
+        action=argparse.BooleanOptionalAction,
+        default=os.environ.get("COLAB_MCP_AUTO_CLICK_CONNECT", "1").strip().lower()
+        not in {"0", "false", "no", "off"},
+        help="Use visible-browser key automation to accept Colab's local MCP Connect dialog when CDP is unavailable.",
+    )
+    parser.add_argument("--auto-click-delay", type=int, default=int(os.environ.get("COLAB_MCP_AUTO_CLICK_DELAY", "8")))
+    parser.add_argument("--auto-click-interval", type=int, default=int(os.environ.get("COLAB_MCP_AUTO_CLICK_INTERVAL", "8")))
+    parser.add_argument("--auto-click-attempts", type=int, default=int(os.environ.get("COLAB_MCP_AUTO_CLICK_ATTEMPTS", "4")))
+    parser.add_argument("--auto-click-window-title", default=os.environ.get("COLAB_MCP_AUTO_CLICK_WINDOW_TITLE", "Colab"))
     parser.add_argument("--cwd", default=DEFAULT_CWD)
     parser.add_argument("--log-file", default="/tmp/colab-mcp-cell-terminal.log")
     args = parser.parse_args()
@@ -270,6 +298,12 @@ def parse_args() -> argparse.Namespace:
         parser.error("--connect-poll-interval must be greater than 0")
     if args.connect_status_interval <= 0:
         parser.error("--connect-status-interval must be greater than 0")
+    if args.auto_click_delay < 0:
+        parser.error("--auto-click-delay must be greater than or equal to 0")
+    if args.auto_click_interval <= 0:
+        parser.error("--auto-click-interval must be greater than 0")
+    if args.auto_click_attempts < 0:
+        parser.error("--auto-click-attempts must be greater than or equal to 0")
     return args
 
 

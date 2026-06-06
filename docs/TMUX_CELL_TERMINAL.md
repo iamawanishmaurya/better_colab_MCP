@@ -35,6 +35,8 @@ Useful startup flags:
 - `--print-url`: print the full scratch URL if Chrome does not navigate.
 - `--browser-open-mode new-tab`: open in a tab instead of a new window.
 - `--connection-timeout 900`: wait longer for slow Colab browser handoffs.
+- `--no-auto-click-connect`: disable visible-browser Connect-dialog automation.
+- `--auto-click-attempts 4`: tune how many visible Connect-dialog attempts run.
 
 Limitations:
 

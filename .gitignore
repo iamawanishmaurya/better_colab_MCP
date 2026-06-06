@@ -22,6 +22,10 @@ build/
 colab-mcp-logs*/
 *.log
 artifacts/
+cookies*.json
+*.cookies.json
+colab-mcp-cookies*.json
+.browser-auth/
 
 .DS_Store
 Thumbs.db
