@@ -611,3 +611,9 @@
 - Step name: Final validation before v0.6.1 commit
 - Action: Re-ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run pytest -q`, and searched the repo for representative live cookie/proxy-token values.
 - Result: Ruff passed; compileall compiled all source and scripts; the full test suite passed with `66 passed` and one aiohttp `NotAppKeyWarning`; the token scan found only the existing dummy `mcpProxyToken=test-token` assertion in `tests/session_test.py`.
+
+## 2026-06-06T16:48:01+05:30 - v0.6.1 commit and tag push
+
+- Step name: v0.6.1 commit and tag push
+- Action: Ran `git add -A`, confirmed staged status, committed `fix: preserve ttyd websocket protocol`, tagged `v0.6.1`, pushed `master`, pushed `v0.6.1`, pushed all tags, and checked the remote tag.
+- Result: Commit `a252980909e21d8740e3243dfdc76721b145f85e` was pushed to `fork/master`; tag `v0.6.1` was pushed and `git ls-remote --tags fork v0.6.1` returned `a252980909e21d8740e3243dfdc76721b145f85e`.
