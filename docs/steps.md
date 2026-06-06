@@ -755,3 +755,9 @@
 - Step name: CLI help sanity check
 - Action: Re-read the localhost parser block and ran `uv run python scripts/colab_opencode_localhost.py --help` plus `uv run python scripts/colab_opencode_supervisor.py --help`.
 - Result: Both CLI help commands succeeded and show the new `--terminal-backend`, Drive persistence, Drive folder, notebook name, require-drive, and Drive timeout flags.
+
+## 2026-06-06T17:30:41+05:30 - v0.7.0 release push verification
+
+- Step name: v0.7.0 release push verification
+- Action: Committed `feat: add Ghost Town Opencode persistence`, tagged `v0.7.0`, pushed `master` to `fork`, pushed tags to `fork`, and checked `git ls-remote --heads fork master` plus `git ls-remote --tags fork v0.7.0`.
+- Result: Commit `8d4358dc0ca70e99928c043265fc1cc79f2a8371` is present on `fork/master`, and tag `v0.7.0` points to the same commit.
