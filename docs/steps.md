@@ -911,3 +911,9 @@
 - Step name: Ghost Town tmux feature commit created
 - Action: Ran `git commit -m "feat: add Ghost Town tmux session mode"`.
 - Result: Created commit `ffc3493` with the Ghost Town tmux session mode implementation, v0.8.0 changelog/version bump, docs, tests, and problem/solution records.
+
+## 2026-06-07T03:03:08+05:30 - Ghost Town tmux release pushed
+
+- Step name: Ghost Town tmux release pushed
+- Action: Amended the feature commit to include the commit-result log, tagged `v0.8.0`, pushed `master` to `fork`, pushed tags, and verified remote refs with `git ls-remote fork refs/heads/master refs/tags/v0.8.0`.
+- Result: Remote `fork/master` and tag `v0.8.0` both point to `4bc4c247d0772dd5c59817df22f58c0031cb0db2`.
