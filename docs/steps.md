@@ -551,3 +551,63 @@
 - Step name: Opencode supervisor final validation
 - Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run pytest -q`, and searched for representative live Google cookie values plus runtime proxy cookie value patterns.
 - Result: Ruff passed, compileall compiled all source/scripts, the full test suite passed with `64 passed in 6.73s`, and the scan found only the intentional dummy test string plus the prior step note, not live cookie values.
+
+## 2026-06-06T16:33:06+05:30 - PinchTab Opencode bridge preflight
+
+- Step name: PinchTab Opencode bridge preflight
+- Action: Loaded the PinchTab workflow guidance, checked the current repo status, and reviewed the running Opencode supervisor state before opening the localhost bridge in PinchTab.
+- Result: The worktree was clean on `master...fork/master`; memory and local guidance identified `/home/astra/.pinchtab/bin/0.11.0/pinchtab-linux-amd64` as the likely PinchTab binary fallback and `127.0.0.1:9872` as the visible Chrome DevTools fallback if normal PinchTab navigation times out.
+
+## 2026-06-06T16:35:55+05:30 - PinchTab blank terminal problem logged
+
+- Step name: PinchTab blank terminal problem logged
+- Action: Opened `http://127.0.0.1:8765/` in a dedicated PinchTab session, verified `window.term` and xterm canvas elements exist, saved `/tmp/colab-opencode-pinchtab.png`, and checked bridge logs after the screenshot showed an empty dark terminal viewport.
+- Result: Created `docs/problems/2026-06-06-pinchtab-terminal-blank.md`; the leading hypothesis is that the local WebSocket proxy is not preserving ttyd's `tty` subprotocol, matching the log message `Client protocols ['tty'] don’t overlap server-known ones ()`.
+
+## 2026-06-06T16:38:41+05:30 - TTYD WebSocket protocol proxy fix
+
+- Step name: TTYD WebSocket protocol proxy fix
+- Action: Updated the Opencode localhost bridge to parse the browser's requested WebSocket protocols, advertise them on the local aiohttp endpoint, pass them to the upstream Colab proxy, and exclude generated WebSocket handshake headers from forwarded headers. Updated the supervisor health check to verify the `tty` protocol path and added a focused local regression test.
+- Result: The implementation now preserves ttyd's `tty` subprotocol end to end, and `tests/opencode_localhost_proxy_test.py` covers the proxy protocol negotiation and message forwarding path.
+
+## 2026-06-06T16:39:22+05:30 - Patch release metadata update
+
+- Step name: Patch release metadata update
+- Action: Ran `uv version 0.6.1` and updated `CHANGELOG.md`.
+- Result: The package version is now `0.6.1`, and the changelog documents the ttyd WebSocket subprotocol proxy fix, supervisor health-check update, and regression test.
+
+## 2026-06-06T16:40:14+05:30 - TTYD protocol fix validation
+
+- Step name: TTYD protocol fix validation
+- Action: Ran `uv run pytest -q tests/opencode_localhost_proxy_test.py`, `uv run ruff check .`, `uv run python -m compileall -f src scripts`, and `uv run pytest -q`.
+- Result: The focused proxy regression test passed with `2 passed`; Ruff passed; compileall compiled all source and scripts; the full test suite passed with `66 passed` and one aiohttp `NotAppKeyWarning` from the existing test app setup.
+
+## 2026-06-06T16:41:18+05:30 - zsh polling variable problem logged
+
+- Step name: zsh polling variable problem logged
+- Action: Restarted the tmux supervisor, then attempted to poll `/tmp/colab-mcp-opencode-session-state.json` with a zsh loop that assigned to `status`.
+- Result: zsh returned `read-only variable: status`; created `docs/problems/2026-06-06-zsh-status-readonly.md` and identified the fix as using a non-reserved variable name.
+
+## 2026-06-06T16:41:51+05:30 - Supervisor restart poll fixed
+
+- Step name: Supervisor restart poll fixed
+- Action: Re-ran the supervisor state poll using `state_value` instead of zsh's reserved `status` parameter, then checked the state JSON and local listening port.
+- Result: Created `docs/solutions/zsh-status-readonly.md`; the supervisor reached `status=running`, health showed HTTP and WebSocket checks passing, and Python PID `3202746` listened on `127.0.0.1:8765`.
+
+## 2026-06-06T16:43:52+05:30 - PinchTab Opencode visual retest
+
+- Step name: PinchTab Opencode visual retest
+- Action: Opened the restarted patched localhost bridge in PinchTab session `ses_bb804e402c7fc30071e7d15daa500a5ce96cf70a6dddf2bc`, evaluated terminal readiness, saved `/tmp/colab-opencode-pinchtab-fixed-waited.png`, and visually inspected the screenshot.
+- Result: Created `docs/problems/2026-06-06-pinchtab-xterm-text-canvas-wait-timeout.md`, `docs/solutions/pinchtab-xterm-text-canvas-wait-timeout.md`, and `docs/solutions/pinchtab-terminal-blank.md`; PinchTab rendered the Opencode TUI with title `OpenCode-Colab`, terminal size `132x58`, working directory `/content`, and version `1.16.2`.
+
+## 2026-06-06T16:45:38+05:30 - Patched bridge log verification
+
+- Step name: Patched bridge log verification
+- Action: Checked the restarted supervisor state, re-evaluated the PinchTab tab, and parsed `/tmp/colab-mcp-opencode-supervised-bridge.log` after the latest `Local proxy is running` marker.
+- Result: Supervisor state remained `status=running` with HTTP and WebSocket health passing; PinchTab still reported title `OpenCode-Colab` and terminal size `132x58`; the restarted bridge emitted `0` new `Client protocols ['tty'] don’t overlap server-known ones ()` messages after the latest start marker.
+
+## 2026-06-06T16:46:43+05:30 - Final validation before v0.6.1 commit
+
+- Step name: Final validation before v0.6.1 commit
+- Action: Re-ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run pytest -q`, and searched the repo for representative live cookie/proxy-token values.
+- Result: Ruff passed; compileall compiled all source and scripts; the full test suite passed with `66 passed` and one aiohttp `NotAppKeyWarning`; the token scan found only the existing dummy `mcpProxyToken=test-token` assertion in `tests/session_test.py`.

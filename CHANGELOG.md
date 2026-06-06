@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.6.1 - 2026-06-06
+
+- Fixed the Opencode localhost WebSocket proxy to preserve ttyd's `tty` subprotocol from the PinchTab/browser client through to the Colab runtime proxy.
+- Updated the Opencode supervisor health check to validate the `tty` WebSocket protocol path.
+- Added a local regression test for ttyd subprotocol negotiation and proxied WebSocket message forwarding.
+
 ## v0.6.0 - 2026-06-06
 
 - Added `scripts/colab_opencode_supervisor.py` to monitor the local Opencode bridge, record session state, detect dead/degraded sessions, and reconnect Colab MCP plus Opencode when the user presses Enter.

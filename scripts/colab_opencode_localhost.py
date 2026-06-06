@@ -42,6 +42,12 @@ HOP_BY_HOP_HEADERS = {
     "proxy-authenticate",
     "proxy-connection",
 }
+WEBSOCKET_HANDSHAKE_HEADERS = {
+    "sec-websocket-extensions",
+    "sec-websocket-key",
+    "sec-websocket-protocol",
+    "sec-websocket-version",
+}
 
 
 def env_bool(name: str, default: bool = False) -> bool:
@@ -85,11 +91,13 @@ def build_target_url(remote_base: str, request: web.Request, *, websocket: bool 
 def filtered_request_headers(
     request: web.Request,
     extra_headers: dict[str, str] | None = None,
+    excluded_headers: set[str] | None = None,
 ) -> dict[str, str]:
+    blocked_headers = HOP_BY_HOP_HEADERS | {"host"} | (excluded_headers or set())
     headers = {
         key: value
         for key, value in request.headers.items()
-        if key.lower() not in HOP_BY_HOP_HEADERS and key.lower() != "host"
+        if key.lower() not in blocked_headers
     }
     headers.update(extra_headers or {})
     return headers
@@ -103,18 +111,35 @@ def filtered_response_headers(headers) -> dict[str, str]:
     }
 
 
+def requested_websocket_protocols(request: web.Request) -> tuple[str, ...]:
+    protocols: list[str] = []
+    for value in request.headers.getall("Sec-WebSocket-Protocol", []):
+        for protocol in value.split(","):
+            protocol = protocol.strip()
+            if protocol and protocol not in protocols:
+                protocols.append(protocol)
+    return tuple(protocols)
+
+
 async def proxy_websocket(
     request: web.Request,
     session: ClientSession,
     remote_base: str,
     extra_headers: dict[str, str],
 ) -> web.WebSocketResponse:
-    ws_local = web.WebSocketResponse(heartbeat=30)
+    protocols = requested_websocket_protocols(request)
+    ws_local = web.WebSocketResponse(heartbeat=30, protocols=protocols)
     await ws_local.prepare(request)
     target = build_target_url(remote_base, request, websocket=True)
-    headers = filtered_request_headers(request, extra_headers)
+    headers = filtered_request_headers(request, extra_headers, WEBSOCKET_HANDSHAKE_HEADERS)
 
-    async with session.ws_connect(target, headers=headers, heartbeat=30, max_msg_size=0) as ws_remote:
+    async with session.ws_connect(
+        target,
+        headers=headers,
+        heartbeat=30,
+        max_msg_size=0,
+        protocols=protocols,
+    ) as ws_remote:
         async def local_to_remote() -> None:
             async for message in ws_local:
                 if message.type == WSMsgType.TEXT:

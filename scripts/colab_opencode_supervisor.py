@@ -115,7 +115,12 @@ async def health_check(args: argparse.Namespace) -> dict:
                 result["httpStatus"] = response.status
                 result["httpOk"] = response.status == 200 and "ttyd" in text.lower()
             if args.check_websocket:
-                async with session.ws_connect(websocket_url, heartbeat=15, max_msg_size=0):
+                async with session.ws_connect(
+                    websocket_url,
+                    heartbeat=15,
+                    max_msg_size=0,
+                    protocols=("tty",),
+                ):
                     result["websocketOk"] = True
             else:
                 result["websocketOk"] = True
