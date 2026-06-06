@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.3.0 - 2026-06-06
+
+- Added `scripts/colab_opencode_web_terminal.py` to install Opencode in Colab and expose it through a `ttyd` browser PTY.
+- Added `docs/OPENCODE_COLAB.md` with setup, runtime paths, and recovery notes.
+- Documented recovery from stuck notebook-cell execution before running interactive terminal setup.
+
 ## v0.2.0 - 2026-06-06
 
 - Added `scripts/colab_cell_terminal.py`, a tmux-friendly shell bridge backed by a reusable Colab code cell over MCP.

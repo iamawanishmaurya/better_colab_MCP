@@ -113,3 +113,99 @@
 - Step name: v0.2.0 pre-commit staging check
 - Action: Ran `git add -A && git status --short --branch`.
 - Result: Git status showed the intended `v0.2.0` changes staged on `master...fork/master`, including the tmux bridge script, tmux documentation, problem/solution logs, step log, changelog, version bump, and lockfile update.
+
+## 2026-06-06T13:57:59+05:30 - Opencode Colab install research
+
+- Step name: Opencode Colab install research
+- Action: Checked the current Opencode install guidance from `https://opencode.ai/docs/`.
+- Result: The documented install path is `curl -fsSL https://opencode.ai/install | bash`; Opencode is described as a terminal-based interface and requires provider API keys, so Colab cell execution can install/verify it, but interactive use needs a real PTY-backed approach rather than plain notebook cell execution.
+
+## 2026-06-06T13:58:26+05:30 - Existing terminal capability inspection
+
+- Step name: Existing terminal capability inspection
+- Action: Searched `src`, `docs`, `scripts`, and `tests` for terminal, PTY, shell, background, and interactive command support; captured the current `colab-cell-terminal` tmux pane.
+- Result: The fork already includes Colab Terminal-backed tools (`run_shell_command`, `start_background_command`, and related helpers) that use Colab's runtime terminal websocket, while the current tmux cell bridge remains a notebook-cell shell bridge and is not suitable for full-screen interactive TUI programs such as Opencode.
+
+## 2026-06-06T13:59:55+05:30 - Opencode install preview problem log
+
+- Step name: Opencode install preview problem log
+- Action: Logged `docs/problems/2026-06-06-opencode-install-script-preview-hang.md` after `curl -fsSL https://opencode.ai/install | sed -n '1,120p'` did not return output or a prompt through the Colab-backed tmux cell terminal within roughly 20 seconds.
+- Result: The exact command, observed pane state, reproduction steps, environment, and first hypothesis are documented before changing strategy.
+
+## 2026-06-06T14:01:41+05:30 - Interactive Opencode strategy decision
+
+- Step name: Interactive Opencode strategy decision
+- Action: Inspected local browser/debugger ports, Chrome processes, and the Colab terminal websocket implementation.
+- Result: No usable CDP endpoint is available on `9333`, `9222`, or `9223`; PinchTab's debug endpoint on `9872` returns `401`; the real Colab Terminal websocket path therefore remains blocked for the existing Chrome session. The selected strategy is to install Opencode in Colab and run it through a Colab-hosted PTY web terminal such as `ttyd`, exposed from a notebook cell.
+
+## 2026-06-06T14:04:03+05:30 - Colab browser connector problem log
+
+- Step name: Colab browser connector problem log
+- Action: Called the available Colab browser connection tool after the cell bridge stayed stuck; logged `docs/problems/2026-06-06-colab-browser-connector-false.md`.
+- Result: The connector returned `{"result": false}` after roughly one minute and did not expose usable runtime controls; the exact result and first hypothesis are documented before trying a different recovery path.
+
+## 2026-06-06T14:05:02+05:30 - Local Opencode install script inspection
+
+- Step name: Local Opencode install script inspection
+- Action: Ran `curl -fsSL --connect-timeout 10 --max-time 30 https://opencode.ai/install | sed -n '1,120p'` and `curl -fsSI --connect-timeout 10 --max-time 30 https://opencode.ai/install` locally.
+- Result: The URL is reachable locally, returns an HTTP 307 redirect to the current GitHub raw install script, and the script installs the binary into `$HOME/.opencode/bin`; a bounded Colab install should use explicit curl timeouts and export `/root/.opencode/bin` on `PATH`.
+
+## 2026-06-06T14:10:18+05:30 - Second cell execution hang problem log
+
+- Step name: Second cell execution hang problem log
+- Action: Logged `docs/problems/2026-06-06-fresh-mcp-cell-execution-hang.md` after a fresh MCP session connected but a simple `print('fresh-mcp-probe-ok-20260606')` cell execution did not return.
+- Result: This is the second notebook-cell execution hang in the same recovery flow, so further notebook-cell retries are paused until distinct recovery options are evaluated and the selected path is documented.
+
+## 2026-06-06T14:11:22+05:30 - Local stuck MCP process cleanup
+
+- Step name: Local stuck MCP process cleanup
+- Action: Stopped local processes `2922192`, `2922206`, `2922215`, and `2946957` from the stuck tmux bridge and fresh probe; checked process and listener state afterward.
+- Result: No `colab_cell_terminal.py` process, local better_colab_MCP `colab-mcp` child, or listeners on `44381`/`41595` remained; this cleaned local state but did not reset the remote Colab runtime execution slot.
+
+## 2026-06-06T14:14:18+05:30 - Colab interrupt recovery action
+
+- Step name: Colab interrupt recovery action
+- Action: Evaluated five recovery options, selected the visible-browser interrupt path, focused the Hyprland Chrome window `scratchpad - Colab - Google Chrome`, and sent `Esc`, `Ctrl+M`, `I` through `ydotool`.
+- Result: Hyprland confirmed the target Chrome window was focused before and after the shortcut sequence; the next step is a bounded simple MCP cell probe to verify whether the Colab execution slot was released.
+
+## 2026-06-06T14:18:41+05:30 - Opencode web terminal implementation
+
+- Step name: Opencode web terminal implementation
+- Action: Added `scripts/colab_opencode_web_terminal.py`, added `docs/OPENCODE_COLAB.md`, updated `CHANGELOG.md`, bumped `pyproject.toml` to `0.3.0`, and ran `uv lock`.
+- Result: The repository now has an MCP-driven setup script that installs Opencode in Colab with bounded curl timeouts, installs `ttyd` through apt or GitHub release fallback, starts a browser PTY on Colab port `7681`, exposes the port through Colab output, and documents usage/recovery requirements.
+
+## 2026-06-06T14:19:33+05:30 - Opencode script local validation
+
+- Step name: Opencode script local validation
+- Action: Ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run python scripts/colab_opencode_web_terminal.py --help`, and `uv run python scripts/colab_opencode_web_terminal.py --port 70000`.
+- Result: Ruff reported `All checks passed!`; compileall compiled source and scripts; the Opencode setup script help shows expected flags; invalid port handling exits with `--port must be between 1 and 65535`.
+
+## 2026-06-06T14:20:47+05:30 - Start Opencode Colab setup session
+
+- Step name: Start Opencode Colab setup session
+- Action: Started tmux session `colab-opencode-web` running `uv run python scripts/colab_opencode_web_terminal.py --setup-timeout 1200 --install-timeout 600`; captured the initial pane output.
+- Result: The script opened the Colab scratch URL, connected through MCP after 12 seconds, and started setup cell `aTxwA2lyIEzS`.
+
+## 2026-06-06T14:23:00+05:30 - Opencode interactive Colab verification
+
+- Step name: Opencode interactive Colab verification
+- Action: Monitored `colab-opencode-web`, captured the finished setup output, focused the Chrome Colab window, and saved `/tmp/colab-opencode-evidence/chrome-opencode.png`.
+- Result: The setup installed Opencode `1.16.2`, installed `ttyd 1.6.3`, started `ttyd` on Colab port `7681` with PID `20230`, reported `COLAB_OPENCODE_RESULT` with `portOpen: true`, exited tmux with status `0`, and the screenshot shows the Opencode web terminal visible and interactive inside the Colab output iframe.
+
+## 2026-06-06T14:23:00+05:30 - Opencode recovery solution logs
+
+- Step name: Opencode recovery solution logs
+- Action: Created `docs/solutions/opencode-install-script-preview-hang.md`, `docs/solutions/fresh-mcp-cell-execution-hang.md`, and `docs/solutions/colab-browser-connector-false.md`.
+- Result: Each related problem now has a matching solution file with what failed, what worked, why it worked, and commands run; the repeated cell execution hang solution documents five recovery options and the selected interrupt strategy.
+
+## 2026-06-06T14:24:52+05:30 - v0.3.0 validation
+
+- Step name: v0.3.0 validation
+- Action: Ran `uv run pytest`, `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run python scripts/colab_opencode_web_terminal.py --help`, and `rg -nP "[^\\x00-\\x7F]" README.md README.zh-CN.md CHANGELOG.md docs src tests scripts pyproject.toml || true`.
+- Result: Pytest passed with `59 passed in 8.63s`; ruff reported `All checks passed!`; compileall compiled `src` and `scripts`; the Opencode setup script help printed expected flags; ASCII scan returned no matches.
+
+## 2026-06-06T14:25:41+05:30 - v0.3.0 pre-commit staging check
+
+- Step name: v0.3.0 pre-commit staging check
+- Action: Ran `git add -A && git status --short --branch`.
+- Result: Git status showed the intended `v0.3.0` changes staged on `master...fork/master`, including the Opencode web terminal script, Opencode documentation, problem/solution logs, step log, changelog, version bump, and lockfile update.
