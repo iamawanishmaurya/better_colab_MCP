@@ -17,7 +17,16 @@ import time
 from aiohttp import ClientSession, ClientTimeout
 
 from colab_opencode_localhost import DEFAULT_LOCAL_HOST, DEFAULT_LOCAL_PORT
-from colab_opencode_web_terminal import DEFAULT_PORT, DEFAULT_REPO, DEFAULT_SETUP_TIMEOUT
+from colab_opencode_web_terminal import (
+    DEFAULT_CWD,
+    DEFAULT_DRIVE_FOLDER,
+    DEFAULT_NOTEBOOK_NAME,
+    DEFAULT_PORT,
+    DEFAULT_REPO,
+    DEFAULT_SETUP_TIMEOUT,
+    DEFAULT_TERMINAL_BACKEND,
+    env_bool,
+)
 
 
 DEFAULT_STATE_FILE = Path("/tmp/colab-mcp-opencode-session-state.json")
@@ -46,6 +55,9 @@ def write_state(args: argparse.Namespace, **updates) -> None:
         "colabPort": args.colab_port,
         "stateFile": str(args.state_file),
         "bridgeLogFile": str(args.bridge_log_file),
+        "terminalBackend": args.terminal_backend,
+        "drivePersistence": args.drive_persistence,
+        "driveFolder": args.drive_folder,
     })
     state.update(updates)
     state["updatedAt"] = utc_now()
@@ -82,6 +94,14 @@ def bridge_command(args: argparse.Namespace) -> list[str]:
         str(args.colab_port),
         "--cwd",
         args.cwd,
+        "--terminal-backend",
+        args.terminal_backend,
+        "--drive-folder",
+        args.drive_folder,
+        "--notebook-name",
+        args.notebook_name,
+        "--drive-mount-timeout",
+        str(args.drive_mount_timeout),
         "--local-host",
         args.local_host,
         "--local-port",
@@ -91,6 +111,8 @@ def bridge_command(args: argparse.Namespace) -> list[str]:
     ]
     command.append("--browser-headless" if args.browser_headless else "--no-browser-headless")
     command.append("--browser-copy-profile" if args.browser_copy_profile else "--no-browser-copy-profile")
+    command.append("--drive-persistence" if args.drive_persistence else "--no-drive-persistence")
+    command.append("--require-drive" if args.require_drive else "--no-require-drive")
     if args.browser_cookie_file:
         command.extend(["--browser-cookie-file", args.browser_cookie_file])
     if args.skip_runtime_connect:
@@ -114,7 +136,7 @@ async def health_check(args: argparse.Namespace) -> dict:
                 text = await response.text(errors="replace")
                 result["httpStatus"] = response.status
                 result["httpOk"] = response.status == 200 and "ttyd" in text.lower()
-            if args.check_websocket:
+            if args.check_websocket and args.terminal_backend == "ttyd":
                 async with session.ws_connect(
                     websocket_url,
                     heartbeat=15,
@@ -303,7 +325,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--setup-timeout", type=int, default=DEFAULT_SETUP_TIMEOUT)
     parser.add_argument("--install-timeout", type=int, default=600)
     parser.add_argument("--colab-port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--cwd", default="/content")
+    parser.add_argument("--cwd", default=os.environ.get("COLAB_OPENCODE_CWD", DEFAULT_CWD))
+    parser.add_argument(
+        "--terminal-backend",
+        choices=("ttyd", "ghosttown"),
+        default=os.environ.get("COLAB_OPENCODE_TERMINAL_BACKEND", DEFAULT_TERMINAL_BACKEND),
+    )
+    parser.add_argument(
+        "--drive-persistence",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("COLAB_OPENCODE_DRIVE_PERSISTENCE", True),
+    )
+    parser.add_argument("--drive-folder", default=os.environ.get("COLAB_OPENCODE_DRIVE_FOLDER", DEFAULT_DRIVE_FOLDER))
+    parser.add_argument("--notebook-name", default=os.environ.get("COLAB_OPENCODE_NOTEBOOK_NAME", DEFAULT_NOTEBOOK_NAME))
+    parser.add_argument(
+        "--require-drive",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("COLAB_OPENCODE_REQUIRE_DRIVE", True),
+    )
+    parser.add_argument(
+        "--drive-mount-timeout",
+        type=int,
+        default=int(os.environ.get("COLAB_OPENCODE_DRIVE_MOUNT_TIMEOUT", "180")),
+    )
     parser.add_argument("--local-host", default=DEFAULT_LOCAL_HOST)
     parser.add_argument("--local-port", type=int, default=DEFAULT_LOCAL_PORT)
     parser.add_argument("--state-file", type=Path, default=DEFAULT_STATE_FILE)
@@ -326,6 +370,12 @@ def parse_args() -> argparse.Namespace:
         parser.error("--startup-timeout must be greater than 0")
     if args.failure_threshold <= 0:
         parser.error("--failure-threshold must be greater than 0")
+    if args.drive_mount_timeout <= 0:
+        parser.error("--drive-mount-timeout must be greater than 0")
+    if args.drive_persistence and not args.drive_folder:
+        parser.error("--drive-folder is required when drive persistence is enabled")
+    if args.drive_persistence and not args.notebook_name.endswith(".ipynb"):
+        parser.error("--notebook-name must end with .ipynb")
     return args
 
 

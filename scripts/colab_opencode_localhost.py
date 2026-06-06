@@ -19,9 +19,13 @@ from fastmcp.client.transports import StdioTransport
 from websockets.sync.client import connect as websocket_connect
 
 from colab_opencode_web_terminal import (
+    DEFAULT_CWD,
+    DEFAULT_DRIVE_FOLDER,
+    DEFAULT_NOTEBOOK_NAME,
     DEFAULT_PORT,
     DEFAULT_REPO,
     DEFAULT_SETUP_TIMEOUT,
+    DEFAULT_TERMINAL_BACKEND,
     outputs_text,
     result_payload,
     setup_cell_code,
@@ -245,8 +249,10 @@ async def smoke_localhost(url: str) -> dict:
     async with ClientSession(timeout=ClientTimeout(total=20)) as session:
         async with session.get(url) as response:
             text = await response.text(errors="replace")
+            text_lower = text.lower()
             return {
-                "ok": response.status < 500 and ("ttyd" in text.lower() or "opencode" in text.lower()),
+                "ok": response.status < 500
+                and any(marker in text_lower for marker in ("ttyd", "opencode", "ghosttown", "ghostty")),
                 "status": response.status,
                 "bodyPrefix": text[:200],
             }
@@ -342,6 +348,12 @@ async def setup_opencode(client: Client, args: argparse.Namespace) -> dict:
         port=args.colab_port,
         cwd=args.cwd,
         install_timeout=args.install_timeout,
+        drive_persistence=args.drive_persistence,
+        drive_folder=args.drive_folder,
+        notebook_name=args.notebook_name,
+        require_drive=args.require_drive,
+        drive_mount_timeout=args.drive_mount_timeout,
+        terminal_backend=args.terminal_backend,
     )
     add = result_payload(
         await client.call_tool(
@@ -413,8 +425,13 @@ async def run(args: argparse.Namespace) -> None:
     extra_headers, cookie_summary = proxy_auth_headers(args.cdp_port, remote_url)
     print(f"Colab proxy auth cookies: {json.dumps(cookie_summary, sort_keys=True)}", flush=True)
     runner = await start_local_proxy(remote_url, args.local_host, args.local_port, extra_headers)
+    print(f"Opencode backend: {setup.get('terminalBackend')}", flush=True)
+    print(f"Opencode workdir: {setup.get('workdir')}", flush=True)
+    print(f"Opencode recovery files: {json.dumps(setup.get('recoveryFiles') or [])}", flush=True)
     print(f"Opencode Colab proxy URL: {remote_url}", flush=True)
     print(f"Localhost URL: {local_url}", flush=True)
+    if setup.get("terminalBackend") == "ghosttown":
+        print(f"Ghost Town new Opencode session URL: {local_url}/new", flush=True)
     try:
         smoke = await smoke_localhost(local_url)
     except Exception:
@@ -437,7 +454,7 @@ async def run(args: argparse.Namespace) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run Opencode in Colab and expose ttyd at local localhost without SSH."
+        description="Run Opencode in Colab and expose its web terminal at local localhost without SSH."
     )
     parser.add_argument("--repo", type=Path, default=DEFAULT_REPO)
     parser.add_argument("--browser-command", default=os.environ.get("COLAB_MCP_BROWSER_COMMAND", "google-chrome-stable"))
@@ -465,7 +482,29 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--setup-timeout", type=int, default=DEFAULT_SETUP_TIMEOUT)
     parser.add_argument("--install-timeout", type=int, default=600)
     parser.add_argument("--colab-port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--cwd", default="/content")
+    parser.add_argument("--cwd", default=os.environ.get("COLAB_OPENCODE_CWD", DEFAULT_CWD))
+    parser.add_argument(
+        "--terminal-backend",
+        choices=("ttyd", "ghosttown"),
+        default=os.environ.get("COLAB_OPENCODE_TERMINAL_BACKEND", DEFAULT_TERMINAL_BACKEND),
+    )
+    parser.add_argument(
+        "--drive-persistence",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("COLAB_OPENCODE_DRIVE_PERSISTENCE", True),
+    )
+    parser.add_argument("--drive-folder", default=os.environ.get("COLAB_OPENCODE_DRIVE_FOLDER", DEFAULT_DRIVE_FOLDER))
+    parser.add_argument("--notebook-name", default=os.environ.get("COLAB_OPENCODE_NOTEBOOK_NAME", DEFAULT_NOTEBOOK_NAME))
+    parser.add_argument(
+        "--require-drive",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("COLAB_OPENCODE_REQUIRE_DRIVE", True),
+    )
+    parser.add_argument(
+        "--drive-mount-timeout",
+        type=int,
+        default=int(os.environ.get("COLAB_OPENCODE_DRIVE_MOUNT_TIMEOUT", "180")),
+    )
     parser.add_argument("--local-host", default=DEFAULT_LOCAL_HOST)
     parser.add_argument("--local-port", type=int, default=DEFAULT_LOCAL_PORT)
     parser.add_argument("--exit-after-smoke", action="store_true")
@@ -475,6 +514,12 @@ def parse_args() -> argparse.Namespace:
         parser.error("--local-port must be between 1 and 65535")
     if not (1 <= args.colab_port <= 65535):
         parser.error("--colab-port must be between 1 and 65535")
+    if args.drive_mount_timeout <= 0:
+        parser.error("--drive-mount-timeout must be greater than 0")
+    if args.drive_persistence and not args.drive_folder:
+        parser.error("--drive-folder is required when drive persistence is enabled")
+    if args.drive_persistence and not args.notebook_name.endswith(".ipynb"):
+        parser.error("--notebook-name must end with .ipynb")
     return args
 
 

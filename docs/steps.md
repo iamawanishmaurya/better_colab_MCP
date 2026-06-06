@@ -617,3 +617,141 @@
 - Step name: v0.6.1 commit and tag push
 - Action: Ran `git add -A`, confirmed staged status, committed `fix: preserve ttyd websocket protocol`, tagged `v0.6.1`, pushed `master`, pushed `v0.6.1`, pushed all tags, and checked the remote tag.
 - Result: Commit `a252980909e21d8740e3243dfdc76721b145f85e` was pushed to `fork/master`; tag `v0.6.1` was pushed and `git ls-remote --tags fork v0.6.1` returned `a252980909e21d8740e3243dfdc76721b145f85e`.
+
+## 2026-06-06T16:52:28+05:30 - Drive persistence feature preflight
+
+- Step name: Drive persistence feature preflight
+- Action: Checked the clean worktree, inspected `scripts/colab_opencode_web_terminal.py`, `docs/OPENCODE_COLAB.md`, and the recent step log after the user requested recoverable Opencode session control through Google Drive.
+- Result: The current Opencode bootstrap still defaults to disposable `/content`; persistence needs to be added at the Colab setup-cell generation layer so both the web-terminal and localhost/supervisor workflows inherit Drive-backed working files.
+
+## 2026-06-06T16:53:34+05:30 - Opencode persistence source check
+
+- Step name: Opencode persistence source check
+- Action: Searched the repo for notebook/Drive helpers and checked the current OpenCode troubleshooting documentation for on-disk storage locations.
+- Result: The local MCP tools can export notebooks but do not expose a direct current-notebook rename tool; OpenCode documents Linux application/session data under `~/.local/share/opencode/`, so the persistence feature should Drive-back both the project workdir and Opencode data/config/log paths.
+
+## 2026-06-06T16:58:06+05:30 - Ghostty web terminal feasibility check
+
+- Step name: Ghostty web terminal feasibility check
+- Action: Checked current Ghostty and Ghostty-powered web terminal documentation after the user asked to try a Ghostty terminal web UI in Colab.
+- Result: Ghostty itself is a native GUI terminal for macOS/Linux, not a browser server. The practical Colab web path is Ghost Town, which is a web terminal and tmux-session server powered by Ghostty's VT100 parser via WebAssembly, so the spike will target Ghost Town rather than the native Ghostty desktop application.
+
+## 2026-06-06T16:59:37+05:30 - Ghost Town package inspection problem logged
+
+- Step name: Ghost Town package inspection problem logged
+- Action: Queried npm metadata for `@seflless/ghosttown` and `@wterm/ghostty`, then unpacked `@seflless/ghosttown` with `npm pack` to inspect its CLI behavior.
+- Result: npm metadata confirmed Ghost Town `1.9.1` provides `ghosttown`, `gt`, and `ght` binaries; running help from the unpacked tarball failed because dependencies were not installed, so `docs/problems/2026-06-06-ghosttown-packed-help-missing-dependency.md` was created and the next step is direct source inspection.
+
+## 2026-06-06T17:00:23+05:30 - Ghost Town temp path problem logged
+
+- Step name: Ghost Town temp path problem logged
+- Action: Tried to rediscover the previously unpacked Ghost Town tarball path under `/tmp` for source inspection.
+- Result: The package path was empty, causing reads from `/cli.js`; created `docs/problems/2026-06-06-ghosttown-temp-package-path-missing.md` and switched to unpacking the package into a stable inspection directory.
+
+## 2026-06-06T17:01:20+05:30 - Ghost Town repeated inspection error decision
+
+- Step name: Ghost Town repeated inspection error decision
+- Action: Ran unpack/read commands for Ghost Town source in parallel, hit another missing-file inspection error, stopped that retry pattern, evaluated five inspection strategies, and selected sequential `npm pack` plus `tar -O`.
+- Result: Created `docs/problems/2026-06-06-ghosttown-parallel-source-inspection-race.md` and `docs/solutions/ghosttown-source-inspection-race.md`; future Ghost Town source inspection will use a single sequential archive-read command instead of rediscovered or parallel temp paths.
+
+## 2026-06-06T17:02:36+05:30 - Ghost Town CLI source inspection
+
+- Step name: Ghost Town CLI source inspection
+- Action: Used sequential `npm pack` plus `tar -O` to inspect Ghost Town's published `src/cli.js` and `src/session/session-manager.js`.
+- Result: Created `docs/solutions/ghosttown-packed-help-missing-dependency.md`; Ghost Town server mode supports `-p/--port`, `--http`, and `--no-auth`, while command mode creates a tmux session and attaches, so the Colab backend should start Opencode in detached `tmux` and run Ghost Town separately as the browser UI server.
+
+## 2026-06-06T17:07:07+05:30 - Generated cell syntax problem logged
+
+- Step name: Generated cell syntax problem logged
+- Action: Added the initial Drive persistence and Ghost Town backend code, then ran local generated-cell and script help validation.
+- Result: Importing `scripts/colab_opencode_web_terminal.py` failed with `SyntaxError: invalid syntax` at `set -euo pipefail`; created `docs/problems/2026-06-06-generated-cell-inner-triple-quote-syntax.md` and identified an inner triple-quoted bash string as the cause.
+
+## 2026-06-06T17:08:19+05:30 - Generated cell validation import path problem logged
+
+- Step name: Generated cell validation import path problem logged
+- Action: Replaced the inner triple-quoted bash string, then reran generated-cell validation and script help checks.
+- Result: Script help output showed the new Ghost Town and Drive flags, but direct import validation failed with `ModuleNotFoundError: No module named 'colab_visible_connect'`; created `docs/problems/2026-06-06-generated-cell-validation-import-path.md` and will rerun validation with `scripts/` on `PYTHONPATH`.
+
+## 2026-06-06T17:09:05+05:30 - Generated cell newline escaping problem logged
+
+- Step name: Generated cell newline escaping problem logged
+- Action: Reran generated-cell compilation with `PYTHONPATH=scripts`.
+- Result: Import succeeded, but compiling the generated setup cell failed with `SyntaxError: unterminated string literal` at the emitted bash script string; created `docs/problems/2026-06-06-generated-cell-newline-escaping.md`.
+
+## 2026-06-06T17:11:08+05:30 - Drive persistence and Ghost Town backend implementation
+
+- Step name: Drive persistence and Ghost Town backend implementation
+- Action: Added Drive mount/persistence helpers to the generated Opencode setup cell, Drive-backed recovery files, OpenCode state/config/cache symlinks, Ghost Town installation/startup, backend flags for the visible setup/localhost/supervisor scripts, generated-cell regression tests, documentation, and `v0.7.0` changelog/version metadata.
+- Result: The scripts now default to Drive persistence under `/content/drive/MyDrive/opencode`; `--terminal-backend ghosttown` installs `@seflless/ghosttown`, starts Opencode in detached `tmux`, and exposes Ghost Town as the browser terminal server.
+
+## 2026-06-06T17:12:33+05:30 - Drive and Ghost Town local validation
+
+- Step name: Drive and Ghost Town local validation
+- Action: Ran generated setup-cell compilation for both backends, checked script help output, then ran `uv run ruff check .`, `uv run python -m compileall -f src scripts`, `uv run pytest -q tests/opencode_setup_cell_test.py`, and `uv run pytest -q`.
+- Result: Generated setup cells compiled for `ttyd` and `ghosttown`; help output shows Drive and backend flags; Ruff passed; compileall compiled all source and scripts; generated setup-cell tests passed with `3 passed`; the full test suite passed with `69 passed` and one aiohttp `NotAppKeyWarning`.
+
+## 2026-06-06T17:17:43+05:30 - Live Ghost Town Drive mount failure logged
+
+- Step name: Live Ghost Town Drive mount failure logged
+- Action: Checked the running Ghost Town localhost bridge, tmux session, log output, and local listener state after the live test failed.
+- Result: The live setup reached Colab but stopped at `google.colab.drive.mount()` with `ValueError: mount failed`; created `docs/problems/2026-06-06-colab-drive-mount-failed-live.md`. Also logged `docs/problems/2026-06-06-ghosttown-tmux-session-not-web-managed.md` because Ghost Town web mode needs a web-managed terminal session instead of a detached tmux-only OpenCode process.
+
+## 2026-06-06T17:20:15+05:30 - Ghost Town web-managed session fix
+
+- Step name: Ghost Town web-managed session fix
+- Action: Replaced the generated Ghost Town detached-tmux launcher with `/content/opencode-ghosttown-shell.sh`, started Ghost Town with `SHELL` pointing to that wrapper, removed the generated-cell tmux dependency, printed a direct localhost `/new` URL, and updated tests, docs, and changelog text.
+- Result: Ghost Town web sessions now create a browser-managed PTY that launches Opencode in the persistent project directory; validation is the next step.
+
+## 2026-06-06T17:20:54+05:30 - Ghost Town launcher fast validation
+
+- Step name: Ghost Town launcher fast validation
+- Action: Compiled generated setup cells for `ttyd` and `ghosttown`, ran `uv run ruff check .`, ran `uv run python -m compileall -f src scripts`, and ran `uv run pytest -q tests/opencode_setup_cell_test.py`.
+- Result: Generated cells compiled; Ruff passed; compileall passed; focused setup-cell tests passed with `3 passed`.
+
+## 2026-06-06T17:21:31+05:30 - Ghost Town launcher full validation
+
+- Step name: Ghost Town launcher full validation
+- Action: Ran `uv run pytest -q` after the Ghost Town web-managed session fix.
+- Result: Full test suite passed with `69 passed` and one existing aiohttp `NotAppKeyWarning`.
+
+## 2026-06-06T17:22:10+05:30 - Ghost Town web-session solution documented
+
+- Step name: Ghost Town web-session solution documented
+- Action: Created `docs/solutions/ghosttown-web-managed-opencode-session.md` with the failure, implementation, rationale, and commands run.
+- Result: The detached-tmux Ghost Town design issue is documented as solved and linked back to its problem file.
+
+## 2026-06-06T17:22:27+05:30 - Live Ghost Town non-strict Drive smoke started
+
+- Step name: Live Ghost Town non-strict Drive smoke started
+- Action: Removed the dead `colab-opencode-ghosttown` tmux session and old temp logs, then started `scripts/colab_opencode_localhost.py --terminal-backend ghosttown --no-require-drive --colab-port 7682 --local-port 8766` in tmux.
+- Result: New tmux session `colab-opencode-ghosttown` is running and writing logs to `/tmp/colab-mcp-opencode-ghosttown.log`; live setup is in progress.
+
+## 2026-06-06T17:23:55+05:30 - Live Ghost Town localhost smoke verified
+
+- Step name: Live Ghost Town localhost smoke verified
+- Action: Polled the live Ghost Town bridge log and local listener after starting the non-strict Drive smoke.
+- Result: Colab installed/verified OpenCode `1.16.2`, Node `v20.19.0`, npm `10.8.2`, and Ghost Town `1.9.1`; Ghost Town opened Colab port `7682`; local proxy is listening at `http://127.0.0.1:8766`; localhost smoke returned HTTP 200. Created `docs/solutions/colab-drive-mount-fallback-for-live-smoke.md` for the Drive authorization fallback.
+
+## 2026-06-06T17:25:50+05:30 - Live verification command error logged
+
+- Step name: Live verification command error logged
+- Action: Tried to pipe Ghost Town session JSON into a Python here-doc while inspecting browser session state.
+- Result: The command failed with `SyntaxError: invalid syntax`; created `docs/problems/2026-06-06-piped-json-python-heredoc-collision.md` before rerunning the inspection with a corrected command form.
+
+## 2026-06-06T17:26:48+05:30 - PinchTab Ghost Town OpenCode verification
+
+- Step name: PinchTab Ghost Town OpenCode verification
+- Action: Used PinchTab session `ses_621856a9580777cbcfa33893e55b043a73e5a451d2bee2c5` to open `http://127.0.0.1:8766/new`, inspected Ghost Town text/snapshot/API state, saved a screenshot to `/tmp/ghosttown-opencode-session.png`, fixed the JSON inspection command, and updated docs/changelog with Drive fallback guidance.
+- Result: PinchTab showed a connected Ghost Town session with focused terminal input; Ghost Town API reported session `41fe23cc-631d-499d-a2de-53ff640d1358` running; the screenshot shows OpenCode `1.16.2` running in the Ghost Town web terminal at workdir `/content`. Created `docs/solutions/piped-json-python-c-command.md`.
+
+## 2026-06-06T17:28:15+05:30 - Final pre-commit validation
+
+- Step name: Final pre-commit validation
+- Action: Checked version/tag state, ran `git diff --check`, searched the repository for representative live Colab token/cookie strings, and reran `uv run pytest -q`.
+- Result: Version is `0.7.0`; latest local release tag is `v0.6.1`; diff whitespace check passed; token scan found only expected code/test/doc references and no live temp token values; full test suite passed with `69 passed` and one existing aiohttp `NotAppKeyWarning`.
+
+## 2026-06-06T17:29:02+05:30 - CLI help sanity check
+
+- Step name: CLI help sanity check
+- Action: Re-read the localhost parser block and ran `uv run python scripts/colab_opencode_localhost.py --help` plus `uv run python scripts/colab_opencode_supervisor.py --help`.
+- Result: Both CLI help commands succeeded and show the new `--terminal-backend`, Drive persistence, Drive folder, notebook name, require-drive, and Drive timeout flags.

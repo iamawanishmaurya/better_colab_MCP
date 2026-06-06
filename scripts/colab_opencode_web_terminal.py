@@ -22,6 +22,18 @@ DEFAULT_REPO = Path(__file__).resolve().parents[1]
 DEFAULT_CONNECTION_TIMEOUT = 600
 DEFAULT_SETUP_TIMEOUT = 900
 DEFAULT_PORT = 7681
+DEFAULT_CWD = "/content"
+DEFAULT_DRIVE_FOLDER = "/content/drive/MyDrive/opencode"
+DEFAULT_NOTEBOOK_NAME = "opencode.ipynb"
+DEFAULT_TERMINAL_BACKEND = "ttyd"
+GHOSTTOWN_PACKAGE = "@seflless/ghosttown"
+
+
+def env_bool(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "y", "on"}
 
 
 def result_text(result) -> str:
@@ -66,7 +78,18 @@ def redact_url(url: str) -> str:
     return re.sub(r"(mcpProxyToken=)[^&]+", r"\1<redacted>", url)
 
 
-def setup_cell_code(*, port: int, cwd: str, install_timeout: int) -> str:
+def setup_cell_code(
+    *,
+    port: int,
+    cwd: str,
+    install_timeout: int,
+    drive_persistence: bool = True,
+    drive_folder: str = DEFAULT_DRIVE_FOLDER,
+    notebook_name: str = DEFAULT_NOTEBOOK_NAME,
+    require_drive: bool = True,
+    drive_mount_timeout: int = 180,
+    terminal_backend: str = DEFAULT_TERMINAL_BACKEND,
+) -> str:
     return f"""
 import json
 import os
@@ -74,16 +97,32 @@ from pathlib import Path
 import platform
 import shlex
 import shutil
+import signal
 import socket
 import subprocess
 import time
 import urllib.request
 
 PORT = {port!r}
-WORKDIR = {cwd!r}
+WORKDIR_REQUEST = {cwd!r}
 INSTALL_TIMEOUT = {install_timeout!r}
-LOG_PATH = "/content/opencode-ttyd.log"
-PID_PATH = "/content/opencode-ttyd.pid"
+DRIVE_PERSISTENCE = {drive_persistence!r}
+DRIVE_FOLDER = {drive_folder!r}
+NOTEBOOK_NAME = {notebook_name!r}
+REQUIRE_DRIVE = {require_drive!r}
+DRIVE_MOUNT_TIMEOUT = {drive_mount_timeout!r}
+TERMINAL_BACKEND = {terminal_backend!r}
+GHOSTTOWN_PACKAGE = {GHOSTTOWN_PACKAGE!r}
+if TERMINAL_BACKEND not in {{"ttyd", "ghosttown"}}:
+    raise RuntimeError("Unsupported terminal backend: " + repr(TERMINAL_BACKEND))
+
+LOG_PATH = "/content/opencode-" + TERMINAL_BACKEND + ".log"
+PID_PATH = "/content/opencode-" + TERMINAL_BACKEND + ".pid"
+SESSION_STATE_PATH = "/content/opencode-session-state.json"
+DRIVE_SUMMARY = {{}}
+PERSISTENCE_LINKS = []
+RECOVERY_FILES = []
+WORKDIR = WORKDIR_REQUEST
 
 
 def emit(message):
@@ -109,6 +148,171 @@ def run(command, *, timeout=300, check=True):
     if check and completed.returncode != 0:
         raise RuntimeError(f"Command failed with exit {{completed.returncode}}: {{command}}")
     return completed
+
+
+class DriveMountTimeout(RuntimeError):
+    pass
+
+
+def mount_drive():
+    if not DRIVE_PERSISTENCE:
+        return {{"enabled": False, "mounted": False, "folder": None}}
+    if Path("/content/drive/MyDrive").exists():
+        return {{"enabled": True, "mounted": True, "folder": DRIVE_FOLDER, "alreadyMounted": True}}
+    try:
+        from google.colab import drive
+    except Exception as exc:
+        if REQUIRE_DRIVE:
+            raise RuntimeError("Google Drive persistence requested but google.colab.drive is unavailable") from exc
+        return {{"enabled": True, "mounted": False, "folder": DRIVE_FOLDER, "error": repr(exc)}}
+
+    def on_timeout(_signum, _frame):
+        raise DriveMountTimeout("Google Drive mount timed out after %s seconds" % DRIVE_MOUNT_TIMEOUT)
+
+    old_handler = signal.signal(signal.SIGALRM, on_timeout)
+    signal.alarm(int(DRIVE_MOUNT_TIMEOUT))
+    try:
+        drive.mount("/content/drive", force_remount=False)
+    except Exception as exc:
+        if REQUIRE_DRIVE:
+            raise RuntimeError("Google Drive mount failed. Complete the Colab Drive authorization prompt and rerun setup.") from exc
+        return {{"enabled": True, "mounted": False, "folder": DRIVE_FOLDER, "error": repr(exc)}}
+    finally:
+        signal.alarm(0)
+        signal.signal(signal.SIGALRM, old_handler)
+
+    mounted = Path("/content/drive/MyDrive").exists()
+    if REQUIRE_DRIVE and not mounted:
+        raise RuntimeError("Google Drive did not mount at /content/drive/MyDrive")
+    return {{"enabled": True, "mounted": mounted, "folder": DRIVE_FOLDER}}
+
+
+def merge_existing_directory(source, target):
+    source_path = Path(source).expanduser()
+    target_path = Path(target)
+    target_path.mkdir(parents=True, exist_ok=True)
+    if not source_path.exists() or source_path.is_symlink():
+        return
+    if source_path.is_dir():
+        shutil.copytree(source_path, target_path, dirs_exist_ok=True)
+        shutil.rmtree(source_path)
+    else:
+        shutil.copy2(source_path, target_path / source_path.name)
+        source_path.unlink()
+
+
+def ensure_persistent_dir(runtime_path, drive_path):
+    runtime = Path(runtime_path).expanduser()
+    drive = Path(drive_path)
+    drive.mkdir(parents=True, exist_ok=True)
+    runtime.parent.mkdir(parents=True, exist_ok=True)
+    if runtime.is_symlink():
+        try:
+            if runtime.resolve() == drive.resolve():
+                return {{"runtime": str(runtime), "drive": str(drive), "linked": True, "alreadyLinked": True}}
+        except FileNotFoundError:
+            pass
+        runtime.unlink()
+    elif runtime.exists():
+        merge_existing_directory(runtime, drive)
+    runtime.symlink_to(drive, target_is_directory=True)
+    return {{"runtime": str(runtime), "drive": str(drive), "linked": True}}
+
+
+def write_recovery_files(drive_root, workdir):
+    drive_path = Path(drive_root)
+    drive_path.mkdir(parents=True, exist_ok=True)
+    notebook_path = drive_path / NOTEBOOK_NAME
+    script_path = drive_path / "run_opencode_recovery.sh"
+    state_readme_path = drive_path / "README.md"
+    script = (
+        "#!/usr/bin/env bash\\n"
+        "set -euo pipefail\\n"
+        "export PATH=\\"$HOME/.opencode/bin:$PATH\\"\\n"
+        "cd %s\\n"
+        "opencode\\n"
+    ) % shlex.quote(str(workdir))
+    script_path.write_text(script, encoding="utf-8")
+    os.chmod(script_path, 0o755)
+    if not notebook_path.exists():
+        notebook = {{
+            "nbformat": 4,
+            "nbformat_minor": 5,
+            "metadata": {{
+                "colab": {{"name": NOTEBOOK_NAME}},
+                "kernelspec": {{"name": "python3", "display_name": "Python 3"}},
+                "language_info": {{"name": "python"}},
+            }},
+            "cells": [
+                {{
+                    "cell_type": "markdown",
+                    "metadata": {{}},
+                    "source": [
+                        "# Opencode Recovery\\n",
+                        "\\n",
+                        "This notebook was generated by better_colab_MCP. Runtime files and OpenCode session data are stored in Google Drive.\\n",
+                    ],
+                }},
+                {{
+                    "cell_type": "code",
+                    "execution_count": None,
+                    "metadata": {{}},
+                    "outputs": [],
+                    "source": [
+                        "from google.colab import drive\\n",
+                        "drive.mount('/content/drive')\\n",
+                        "import os\\n",
+                        "os.chdir(%r)\\n" % str(workdir),
+                        "!bash %s\\n" % shlex.quote(str(script_path)),
+                    ],
+                }},
+            ],
+        }}
+        notebook_path.write_text(json.dumps(notebook, indent=1) + "\\n", encoding="utf-8")
+    state_readme_path.write_text(
+        "Opencode Colab persistence\\n\\n"
+        "Project folder: %s\\n"
+        "OpenCode data: %s\\n"
+        "OpenCode config: %s\\n"
+        "Recovery notebook: %s\\n"
+        "Recovery script: %s\\n"
+        % (
+            str(workdir),
+            str(drive_path / "state" / "share" / "opencode"),
+            str(drive_path / "state" / "config" / "opencode"),
+            str(notebook_path),
+            str(script_path),
+        ),
+        encoding="utf-8",
+    )
+    return [str(notebook_path), str(script_path), str(state_readme_path)]
+
+
+def configure_persistence():
+    global DRIVE_SUMMARY, PERSISTENCE_LINKS, RECOVERY_FILES, WORKDIR
+    DRIVE_SUMMARY = mount_drive()
+    if not DRIVE_PERSISTENCE or not DRIVE_SUMMARY.get("mounted"):
+        WORKDIR = WORKDIR_REQUEST
+        Path(WORKDIR).mkdir(parents=True, exist_ok=True)
+        return
+
+    drive_root = Path(DRIVE_FOLDER)
+    drive_root.mkdir(parents=True, exist_ok=True)
+    if WORKDIR_REQUEST in ("", "/content", "/content/"):
+        WORKDIR = str(drive_root / "project")
+    else:
+        WORKDIR = WORKDIR_REQUEST
+    Path(WORKDIR).mkdir(parents=True, exist_ok=True)
+
+    PERSISTENCE_LINKS = [
+        ensure_persistent_dir("~/.local/share/opencode", drive_root / "state" / "share" / "opencode"),
+        ensure_persistent_dir("~/.config/opencode", drive_root / "state" / "config" / "opencode"),
+        ensure_persistent_dir("~/.cache/opencode", drive_root / "state" / "cache" / "opencode"),
+        ensure_persistent_dir("~/.config/ghosttown", drive_root / "state" / "config" / "ghosttown"),
+    ]
+    RECOVERY_FILES = write_recovery_files(drive_root, Path(WORKDIR))
+    emit("Drive persistence root: " + str(drive_root))
+    emit("Opencode working directory: " + str(WORKDIR))
 
 
 def install_opencode():
@@ -158,6 +362,43 @@ def install_ttyd():
         raise RuntimeError("ttyd was not found on PATH after installation")
 
 
+def install_node_runtime():
+    missing = [name for name in ("node", "npm") if not shutil.which(name)]
+    if missing:
+        run(
+            "apt-get update -y && DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs npm",
+            timeout=600,
+        )
+    run("node --version && npm --version", timeout=120)
+
+
+def install_ghosttown():
+    install_node_runtime()
+    if shutil.which("ghosttown"):
+        emit("ghosttown already installed: " + shutil.which("ghosttown"))
+        return
+    run(
+        "npm install -g " + shlex.quote(GHOSTTOWN_PACKAGE),
+        timeout=INSTALL_TIMEOUT + 120,
+    )
+    if not shutil.which("ghosttown"):
+        raise RuntimeError("ghosttown was not found on PATH after npm install")
+
+
+def write_ghosttown_shell():
+    shell_path = Path("/content/opencode-ghosttown-shell.sh")
+    script = (
+        "#!/usr/bin/env bash\\n"
+        "set -euo pipefail\\n"
+        "export PATH=\\"$HOME/.opencode/bin:$PATH\\"\\n"
+        "cd %s\\n"
+        "exec opencode\\n"
+    ) % shlex.quote(WORKDIR)
+    shell_path.write_text(script, encoding="utf-8")
+    os.chmod(shell_path, 0o755)
+    return str(shell_path)
+
+
 def port_open(port):
     with socket.socket() as sock:
         sock.settimeout(1)
@@ -195,11 +436,41 @@ def start_ttyd():
     raise RuntimeError("ttyd did not open the requested port. Log tail:\\n" + tail)
 
 
+def start_ghosttown():
+    Path(WORKDIR).mkdir(parents=True, exist_ok=True)
+    run(f"fuser -k {{PORT}}/tcp >/dev/null 2>&1 || true", timeout=20, check=False)
+    shell_path = write_ghosttown_shell()
+    command = (
+        "SHELL="
+        + shlex.quote(shell_path)
+        + " nohup ghosttown -p "
+        + str(PORT)
+        + " --http --no-auth > "
+        + shlex.quote(LOG_PATH)
+        + " 2>&1 & echo $! > "
+        + shlex.quote(PID_PATH)
+    )
+    run(command, timeout=30)
+    deadline = time.time() + 45
+    while time.time() < deadline:
+        if port_open(PORT):
+            return
+        time.sleep(1)
+    tail = Path(LOG_PATH).read_text(errors="replace")[-4000:] if Path(LOG_PATH).exists() else ""
+    raise RuntimeError("ghosttown did not open the requested port. Log tail:\\n" + tail)
+
+
+configure_persistence()
 install_opencode()
-install_ttyd()
 run("opencode --version", timeout=60)
-run("ttyd --version", timeout=60)
-start_ttyd()
+if TERMINAL_BACKEND == "ghosttown":
+    install_ghosttown()
+    run("ghosttown --version", timeout=60)
+    start_ghosttown()
+else:
+    install_ttyd()
+    run("ttyd --version", timeout=60)
+    start_ttyd()
 
 proxy_url = None
 proxy_url_error = None
@@ -222,14 +493,26 @@ result = {{
     "port": PORT,
     "pid": pid,
     "workdir": WORKDIR,
+    "terminalBackend": TERMINAL_BACKEND,
+    "drive": DRIVE_SUMMARY,
+    "persistenceLinks": PERSISTENCE_LINKS,
+    "recoveryFiles": RECOVERY_FILES,
+    "sessionStatePath": SESSION_STATE_PATH,
     "logPath": LOG_PATH,
     "pidPath": PID_PATH,
     "opencode": shutil.which("opencode"),
+    "ghosttown": shutil.which("ghosttown"),
+    "ghosttownShellPath": "/content/opencode-ghosttown-shell.sh" if TERMINAL_BACKEND == "ghosttown" else None,
+    "ghosttownNewSessionPath": "/new" if TERMINAL_BACKEND == "ghosttown" else None,
     "ttyd": shutil.which("ttyd"),
     "portOpen": port_open(PORT),
     "proxyUrl": proxy_url,
     "proxyUrlError": proxy_url_error,
 }}
+Path(SESSION_STATE_PATH).write_text(json.dumps(result, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
+if DRIVE_PERSISTENCE and DRIVE_SUMMARY.get("mounted"):
+    drive_state = Path(DRIVE_FOLDER) / "opencode-session-state.json"
+    drive_state.write_text(json.dumps(result, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
 emit("COLAB_OPENCODE_RESULT " + json.dumps(result, sort_keys=True))
 """
 
@@ -297,6 +580,12 @@ async def run_setup(args: argparse.Namespace) -> None:
             port=args.port,
             cwd=args.cwd,
             install_timeout=args.install_timeout,
+            drive_persistence=args.drive_persistence,
+            drive_folder=args.drive_folder,
+            notebook_name=args.notebook_name,
+            require_drive=args.require_drive,
+            drive_mount_timeout=args.drive_mount_timeout,
+            terminal_backend=args.terminal_backend,
         )
         add = result_payload(
             await client.call_tool(
@@ -322,13 +611,13 @@ async def run_setup(args: argparse.Namespace) -> None:
         print(output, end="" if output.endswith("\n") else "\n")
         if "COLAB_OPENCODE_RESULT" not in output:
             raise RuntimeError("Opencode setup did not report success. Check output above.")
-        print("Opencode web terminal is running in Colab.", flush=True)
+        print(f"Opencode {args.terminal_backend} web terminal is running in Colab.", flush=True)
         print(f"Open the Colab output iframe/window on port {args.port}.", flush=True)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Install Opencode in Colab and expose it through a ttyd web terminal."
+        description="Install Opencode in Colab and expose it through a web terminal."
     )
     parser.add_argument("--repo", type=Path, default=DEFAULT_REPO)
     parser.add_argument("--browser-command", default=os.environ.get("COLAB_MCP_BROWSER_COMMAND", "google-chrome-stable"))
@@ -344,7 +633,32 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--setup-timeout", type=int, default=DEFAULT_SETUP_TIMEOUT)
     parser.add_argument("--install-timeout", type=int, default=600)
     parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--cwd", default="/content")
+    parser.add_argument("--cwd", default=os.environ.get("COLAB_OPENCODE_CWD", DEFAULT_CWD))
+    parser.add_argument(
+        "--terminal-backend",
+        choices=("ttyd", "ghosttown"),
+        default=os.environ.get("COLAB_OPENCODE_TERMINAL_BACKEND", DEFAULT_TERMINAL_BACKEND),
+        help="Terminal web backend to start in Colab.",
+    )
+    parser.add_argument(
+        "--drive-persistence",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("COLAB_OPENCODE_DRIVE_PERSISTENCE", True),
+        help="Mount Google Drive and persist Opencode project/session data under --drive-folder.",
+    )
+    parser.add_argument("--drive-folder", default=os.environ.get("COLAB_OPENCODE_DRIVE_FOLDER", DEFAULT_DRIVE_FOLDER))
+    parser.add_argument("--notebook-name", default=os.environ.get("COLAB_OPENCODE_NOTEBOOK_NAME", DEFAULT_NOTEBOOK_NAME))
+    parser.add_argument(
+        "--require-drive",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("COLAB_OPENCODE_REQUIRE_DRIVE", True),
+        help="Fail setup if Google Drive cannot be mounted when drive persistence is enabled.",
+    )
+    parser.add_argument(
+        "--drive-mount-timeout",
+        type=int,
+        default=int(os.environ.get("COLAB_OPENCODE_DRIVE_MOUNT_TIMEOUT", "180")),
+    )
     parser.add_argument("--print-url", action="store_true", default=os.environ.get("COLAB_MCP_PRINT_CONNECTION_URL") == "1")
     parser.add_argument(
         "--auto-click-connect",
@@ -367,6 +681,12 @@ def parse_args() -> argparse.Namespace:
         parser.error("--setup-timeout must be greater than 0")
     if args.install_timeout <= 0:
         parser.error("--install-timeout must be greater than 0")
+    if args.drive_mount_timeout <= 0:
+        parser.error("--drive-mount-timeout must be greater than 0")
+    if args.drive_persistence and not args.drive_folder:
+        parser.error("--drive-folder is required when drive persistence is enabled")
+    if args.drive_persistence and not args.notebook_name.endswith(".ipynb"):
+        parser.error("--notebook-name must end with .ipynb")
     if not (1 <= args.port <= 65535):
         parser.error("--port must be between 1 and 65535")
     if args.auto_click_delay < 0:

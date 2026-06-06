@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.7.0 - 2026-06-06
+
+- Added Drive-backed Opencode persistence by default, creating `/content/drive/MyDrive/opencode`, a persistent project folder, `opencode.ipynb`, recovery script, and Drive-copied session state.
+- Symlinked OpenCode state/config/cache paths and Ghost Town config into the Drive folder so chats, project session data, and terminal session metadata can survive Colab runtime loss.
+- Added `--terminal-backend ghosttown` to run Opencode through Ghost Town, a Ghostty-powered browser terminal server whose `/new` sessions launch Opencode through a generated shell wrapper.
+- Documented the `--no-require-drive` smoke-test path for runtimes where Colab Drive authorization is unavailable.
+- Added matching Drive and terminal-backend flags to the localhost bridge and reconnect supervisor.
+- Added generated setup-cell tests for ttyd, Ghost Town, and disabled-Drive modes.
+
 ## v0.6.1 - 2026-06-06
 
 - Fixed the Opencode localhost WebSocket proxy to preserve ttyd's `tty` subprotocol from the PinchTab/browser client through to the Colab runtime proxy.
