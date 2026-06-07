@@ -192,7 +192,7 @@ Expected: status shows only intended Task 1 files staged before commit; push suc
 - Create: `src/colab_mcp/drive_terminal_wizard.py`
 - Create: `tests/drive_terminal_wizard_test.py`
 
-- [ ] **Step 1: Write failing profile discovery tests**
+- [x] **Step 1: Write failing profile discovery tests**
 
 Create `tests/drive_terminal_wizard_test.py`:
 
@@ -289,7 +289,7 @@ def test_build_bridge_command_uses_shell_and_profile_copy(tmp_path):
     assert command[command.index("--drive-folder") + 1] == "/content/drive/MyDrive/colab-terminal"
 ```
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -299,7 +299,7 @@ uv run pytest tests/drive_terminal_wizard_test.py -q
 
 Expected: import fails because `colab_mcp.drive_terminal_wizard` does not exist.
 
-- [ ] **Step 3: Implement profile and workspace helpers**
+- [x] **Step 3: Implement profile and workspace helpers**
 
 Create `src/colab_mcp/drive_terminal_wizard.py` with:
 
@@ -378,7 +378,7 @@ def choose_workspace(
     raise ValueError(f"Unknown workspace mode: {mode}")
 ```
 
-- [ ] **Step 4: Implement command builder**
+- [x] **Step 4: Implement command builder**
 
 Append to `src/colab_mcp/drive_terminal_wizard.py`:
 
@@ -433,7 +433,7 @@ def build_bridge_command(
     return command
 ```
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run:
 

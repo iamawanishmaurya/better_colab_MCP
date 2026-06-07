@@ -1871,3 +1871,21 @@
 - Step name: Task 1 implementation committed
 - Action: Ran `git add -A`, confirmed staged status, committed `feat: make Colab terminal shell-first`, and pushed `master` to `fork`.
 - Result: Commit `1f4a76c` is available on `fork/master`.
+
+## 2026-06-07T11:37:52+05:30 - Task 2 failing tests confirmed
+
+- Step name: Task 2 failing tests confirmed
+- Action: Added wizard helper tests for Chrome profile parsing, Drive/temp workspace selection, and bridge command construction, then ran `uv run pytest tests/drive_terminal_wizard_test.py -q`.
+- Result: The focused test failed as expected during collection with `ModuleNotFoundError: No module named 'colab_mcp.drive_terminal_wizard'`.
+
+## 2026-06-07T11:39:49+05:30 - Task 2 wizard helpers implemented
+
+- Step name: Task 2 wizard helpers implemented
+- Action: Added `src/colab_mcp/drive_terminal_wizard.py`, fixed the pytest `tmp_path` fixture helper after logging the problem, documented the solution, and reran `uv run pytest tests/drive_terminal_wizard_test.py -q`.
+- Result: Focused wizard helper tests passed with `4 passed`.
+
+## 2026-06-07T11:40:47+05:30 - Task 2 full suite passed
+
+- Step name: Task 2 full suite passed
+- Action: Ran `uv run pytest -q` after adding wizard profile/workspace/command helper code and tests.
+- Result: Full test suite passed with `86 passed, 1 warning`.
