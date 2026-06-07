@@ -640,7 +640,7 @@ Expected: status shows CLI wrapper, wizard module, tests, and pyproject staged b
 - Modify: `uv.lock`
 - Modify: `docs/steps.md`
 
-- [ ] **Step 1: Bump package version**
+- [x] **Step 1: Bump package version**
 
 Set `pyproject.toml`:
 
@@ -656,7 +656,7 @@ uv lock
 
 Expected: `uv.lock` package version is `0.10.0`.
 
-- [ ] **Step 2: Update changelog**
+- [x] **Step 2: Update changelog**
 
 Add to the top of `CHANGELOG.md`:
 
@@ -669,7 +669,7 @@ Add to the top of `CHANGELOG.md`:
 - Added explicit temporary `/content` fallback guarded by interactive confirmation or `--allow-temp`.
 ```
 
-- [ ] **Step 3: Update user docs**
+- [x] **Step 3: Update user docs**
 
 Add this quick start to `docs/OPENCODE_COLAB.md`:
 

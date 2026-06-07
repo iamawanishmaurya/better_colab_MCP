@@ -32,7 +32,7 @@ Usage:
   scripts/launch_colab_drive_terminal.sh [shell|opencode] [options] [-- extra bridge args...]
 
 Default mode is "shell": a normal Bash terminal rooted in the Drive-backed
-/content/drive/MyDrive/opencode/project folder when Drive mounts.
+/content/drive/MyDrive/colab-terminal/projects/project folder when Drive mounts.
 
 Options:
   --local-port PORT              Local localhost port. Default: 8768

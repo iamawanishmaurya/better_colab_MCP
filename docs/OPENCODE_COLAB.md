@@ -1,38 +1,66 @@
-# Opencode In Colab
+# Colab Drive Terminal
 
-This workflow installs Opencode inside the Colab runtime and exposes it through
-`ttyd`, a browser-based PTY terminal. It can also expose Opencode through
-Ghost Town, a Ghostty-powered browser terminal. Use this for full-screen interactive
-programs; the cell terminal bridge is only a command runner and is not a real
-PTY.
+This workflow opens a real browser-based PTY terminal inside a Colab runtime.
+The default terminal is a native Colab Ubuntu shell rooted in Google Drive, so
+Colab acts as disposable compute and Drive acts as the durable disk.
 
-Start setup from this repository:
+Run the interactive wizard:
+
+```shell
+uv run colab-drive-terminal
+```
+
+The wizard:
+
+- Scans Chrome profiles from the local Chrome `Local State` file.
+- Lets you select a signed-in Google profile by number or profile name.
+- Uses a dedicated copied Chrome profile for controllable CDP/MCP automation.
+- Connects Colab MCP without clicking the Colab dialog manually.
+- Connects the Colab runtime.
+- Mounts Google Drive by default.
+- Opens a native Ubuntu shell in the Drive-backed project folder.
+- Keeps `~/.config` and `~/.local/share` in Drive so app settings and sessions
+  can recover after a Colab runtime reset.
+- Keeps `~/.cache` temporary under `/content/colab-terminal-cache` by default.
+
+The default persistent workspace is:
+
+```text
+/content/drive/MyDrive/colab-terminal/projects/<project-name>
+```
+
+OpenCode is not started by default. Install it inside the shell when needed:
+
+```shell
+curl -fsSL https://opencode.ai/install | bash
+opencode
+```
+
+Useful wizard flags:
+
+```shell
+uv run colab-drive-terminal --profile 'Profile 32' --workspace drive --project my-project
+uv run colab-drive-terminal --profile nothumanatall --workspace drive --project my-project
+uv run colab-drive-terminal --profile 'Profile 32' --workspace temp --allow-temp --project scratch
+uv run colab-drive-terminal --profile 'Profile 32' --refresh-profile-copy
+uv run colab-drive-terminal --profile 'Profile 32' --dry-run
+```
+
+Use temporary `/content` mode only for disposable work. It is not durable across
+Colab runtime resets.
+
+## Lower-Level Setup Script
+
+The lower-level setup script is still available when you want to bypass the
+wizard:
 
 ```shell
 uv run python scripts/colab_opencode_web_terminal.py
 ```
 
-The script:
-
-- Starts a client-managed `colab-mcp` server.
-- Opens the Colab scratch URL in Chrome profile `Default`.
-- Mounts Google Drive by default. If Colab shows a Drive authorization prompt,
-  complete that prompt in the browser before rerunning setup.
-- Creates `/content/drive/MyDrive/opencode`.
-- Uses `/content/drive/MyDrive/opencode/project` as the default Opencode
-  working directory when `--cwd` is left as `/content`.
-- Writes a recovery notebook named `opencode.ipynb`, a recovery shell script,
-  and `opencode-session-state.json` under the Drive folder.
-- Symlinks OpenCode state/config/cache paths into the Drive folder, including
-  `~/.local/share/opencode`, so chats and project session data survive runtime
-  loss.
-- Installs Opencode with the official `https://opencode.ai/install` script using
-  bounded curl timeouts.
-- Installs `ttyd` through `apt`, with a GitHub release binary fallback.
-- Starts `ttyd` on Colab port `7681`.
-- Opens Opencode by default, or a normal Bash terminal when
-  `--terminal-command shell` is used.
-- Opens a Colab output window/iframe for the web terminal.
+The script starts a client-managed `colab-mcp` server, opens Colab, mounts Drive
+by default, installs the selected terminal backend, and opens a Colab output
+window/iframe for the web terminal.
 
 Useful flags:
 
@@ -43,6 +71,7 @@ uv run python scripts/colab_opencode_web_terminal.py --no-auto-click-connect
 uv run python scripts/colab_opencode_web_terminal.py --no-drive-persistence --cwd /content
 uv run python scripts/colab_opencode_web_terminal.py --no-require-drive
 uv run python scripts/colab_opencode_web_terminal.py --terminal-command shell
+uv run python scripts/colab_opencode_web_terminal.py --terminal-command opencode
 uv run python scripts/colab_opencode_web_terminal.py --terminal-backend ghosttown
 uv run python scripts/colab_opencode_web_terminal.py --terminal-backend ghosttown --ghosttown-session-mode tmux
 ```
@@ -53,16 +82,16 @@ back to the requested runtime directory if Colab refuses or times out.
 
 ## Terminal Command Modes
 
-The web terminal can open either Opencode or a normal shell:
+The web terminal can open either a normal shell or Opencode:
 
 ```shell
 # Recommended: plain Drive-rooted shell terminal with fresh logs and tmux.
 ./scripts/launch_colab_drive_terminal.sh shell
 
-# Same launcher, but start Opencode immediately in the Colab tmux session.
+# Optional: start Opencode immediately in the Colab tmux session.
 ./scripts/launch_colab_drive_terminal.sh opencode
 
-# Default: open Opencode immediately.
+# Optional lower-level OpenCode mode.
 uv run python scripts/colab_opencode_localhost.py \
   --terminal-backend ghosttown \
   --ghosttown-session-mode tmux \
@@ -78,12 +107,12 @@ uv run python scripts/colab_opencode_localhost.py \
 When Drive mounts and `--cwd` is left as `/content`, both modes start in:
 
 ```text
-/content/drive/MyDrive/opencode/project
+/content/drive/MyDrive/colab-terminal/projects/project
 ```
 
-That makes Google Drive the primary project disk for the terminal. Opencode is
-still installed and on `PATH` in shell mode, so you can type `opencode` manually
-from the shell whenever you want the TUI.
+That makes Google Drive the primary project disk for the terminal. OpenCode is
+installed automatically only in OpenCode mode; in shell mode, install it from
+the shell when needed.
 
 The launcher script is the safest local entrypoint for repeated use. It avoids
 long pasted tmux commands, creates fresh log files for every run, replaces the
@@ -127,14 +156,14 @@ browser-based Ghostty-powered terminal, use Ghost Town:
 ```shell
 uv run python scripts/colab_opencode_web_terminal.py \
   --terminal-backend ghosttown \
-  --drive-folder /content/drive/MyDrive/opencode \
-  --notebook-name opencode.ipynb
+  --drive-folder /content/drive/MyDrive/colab-terminal \
+  --notebook-name colab-terminal.ipynb
 ```
 
 The setup cell installs `@seflless/ghosttown`, writes
-`/content/opencode-ghosttown-shell.sh`, and starts the Ghost Town web server on
+`/content/colab-terminal-ghosttown-shell.sh`, and starts the Ghost Town web server on
 the selected Colab port. Open `/new` on the Ghost Town URL to create a
-web-managed terminal session that launches either Opencode or Bash in the
+web-managed terminal session that launches either Bash or OpenCode in the
 persistent project directory, depending on `--terminal-command`.
 
 To make the Ghost Town browser terminal attach directly to a tmux session in
@@ -206,9 +235,8 @@ The script:
   reaching the local MCP websocket. Set
   `COLAB_MCP_BROWSER_DISABLE_LOCAL_NETWORK_CHECKS=0` to opt out.
 - Connects the Colab runtime.
-- Mounts Drive by default and prepares the persistent Opencode folder.
-- Installs Opencode and starts the selected web terminal backend on the remote
-  Colab port.
+- Mounts Drive by default and prepares the persistent Colab terminal folder.
+- Installs the selected web terminal backend on the remote Colab port.
 - Reads the Colab kernel proxy URL.
 - Starts a local HTTP/WebSocket reverse proxy at `http://127.0.0.1:8765`.
 - Runs a localhost smoke request before staying attached.
@@ -251,11 +279,11 @@ When health checks fail or the bridge exits, it marks the session `dead` and
 prints:
 
 ```text
-Session is down. Press Enter to reconnect Colab MCP and Opencode, or Ctrl+C to stop.
+Session is down. Press Enter to reconnect Colab MCP and the terminal, or Ctrl+C to stop.
 ```
 
 Press Enter in the supervisor terminal to restart the MCP connection, reconnect
-the Colab runtime, restart ttyd/Opencode, and restore localhost access.
+the Colab runtime, restart the terminal backend, and restore localhost access.
 
 To keep the supervisor attachable across shell interruptions, run it in tmux:
 
@@ -280,16 +308,16 @@ tmux attach -t colab-opencode-supervisor
 
 Runtime paths:
 
-- Opencode binary: `/root/.opencode/bin/opencode`
-- Persistent Drive root: `/content/drive/MyDrive/opencode`
-- Persistent project folder: `/content/drive/MyDrive/opencode/project`
-- Recovery notebook: `/content/drive/MyDrive/opencode/opencode.ipynb`
-- Runtime state: `/content/opencode-session-state.json`
-- Drive state copy: `/content/drive/MyDrive/opencode/opencode-session-state.json`
-- Backend log: `/content/opencode-ttyd.log` or `/content/opencode-ghosttown.log`
-- Backend PID file: `/content/opencode-ttyd.pid` or `/content/opencode-ghosttown.pid`
-- Ghost Town OpenCode shell: `/content/opencode-ghosttown-shell.sh`
-- Ghost Town tmux attach command: `tmux attach -t opencode`
+- Optional OpenCode binary: `/root/.opencode/bin/opencode`
+- Persistent Drive root: `/content/drive/MyDrive/colab-terminal`
+- Persistent project folder: `/content/drive/MyDrive/colab-terminal/projects/<project-name>`
+- Recovery notebook: `/content/drive/MyDrive/colab-terminal/colab-terminal.ipynb`
+- Runtime state: `/content/colab-terminal-session-state.json`
+- Drive state copy: `/content/drive/MyDrive/colab-terminal/sessions/terminal-state.json`
+- Backend log: `/content/colab-terminal-ttyd.log` or `/content/colab-terminal-ghosttown.log`
+- Backend PID file: `/content/colab-terminal-ttyd.pid` or `/content/colab-terminal-ghosttown.pid`
+- Ghost Town shell: `/content/colab-terminal-ghosttown-shell.sh`
+- Ghost Town tmux attach command: `tmux attach -t drive-terminal`
 - Terminal command mode: `opencode` or `shell`
 
 Requirements:

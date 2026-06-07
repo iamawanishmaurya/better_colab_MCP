@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.10.0 - 2026-06-07
+
+- Added `colab-drive-terminal`, an interactive wizard for selecting a signed-in Chrome profile and launching a Drive-backed native Colab Ubuntu shell.
+- Changed terminal defaults from OpenCode-first to shell-first; OpenCode remains available as an explicit mode or manual install from the shell.
+- Added Drive-first workspace persistence under `/content/drive/MyDrive/colab-terminal` with XDG config and app-data persistence.
+- Added explicit temporary `/content` fallback guarded by interactive confirmation or `--allow-temp`.
+
 ## v0.9.1 - 2026-06-07
 
 - Added `scripts/launch_colab_drive_terminal.sh` as the recommended short launcher for Drive-rooted Colab shell or Opencode terminal sessions.

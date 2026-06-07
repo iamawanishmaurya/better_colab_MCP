@@ -1919,3 +1919,15 @@
 - Step name: Task 3 implementation committed
 - Action: Ran `git add -A`, confirmed staged status, committed `feat: add interactive Colab terminal wizard`, and pushed `master` to `fork`.
 - Result: Commit `140145b` is available on `fork/master`.
+
+## 2026-06-07T11:49:55+05:30 - Task 4 docs and version updated
+
+- Step name: Task 4 docs and version updated
+- Action: Bumped package metadata to `v0.10.0`, refreshed `uv.lock`, added the `v0.10.0` changelog entry, and rewrote the Colab terminal docs around the wizard-first native shell workflow.
+- Result: `pyproject.toml` and `uv.lock` both report `0.10.0`, current docs use `/content/drive/MyDrive/colab-terminal`, and the short launcher help matches the new default path.
+
+## 2026-06-07T11:50:51+05:30 - Task 4 validation passed
+
+- Step name: Task 4 validation passed
+- Action: Ran `uv run pytest -q` and `git diff --check` after the `v0.10.0` docs and metadata update.
+- Result: Full test suite passed with `88 passed, 1 warning`, and whitespace checks passed.
