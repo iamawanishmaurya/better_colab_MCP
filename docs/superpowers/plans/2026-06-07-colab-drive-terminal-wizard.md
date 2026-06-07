@@ -618,7 +618,7 @@ uv run pytest tests/drive_terminal_wizard_test.py -q
 
 Expected: all wizard tests pass.
 
-- [ ] **Step 6: Commit Task 3**
+- [x] **Step 6: Commit Task 3**
 
 Run:
 
