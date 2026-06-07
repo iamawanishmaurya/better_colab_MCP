@@ -173,7 +173,7 @@ uv run pytest tests/opencode_setup_cell_test.py -q
 
 Expected: all setup-cell tests pass.
 
-- [ ] **Step 6: Commit Task 1**
+- [x] **Step 6: Commit Task 1**
 
 Run:
 
