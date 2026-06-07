@@ -4556,22 +4556,30 @@ def _connect_colab_tab(
         f"const targetToken={target_token};"
         f"const targetPort={target_port};"
         f"const targetUrl={target_url};"
-        "const before={connected:svc.isConnected?.(),token:sessionStorage.getItem('mcp_proxy_token'),port:sessionStorage.getItem('mcp_proxy_port'),href:location.href};"
+        "function serviceConnected(){try{return !!svc.isConnected?.();}catch(e){return false;}}"
+        "function serverConnected(){"
+        "const outer=svc.colabMcpServer;"
+        "try{if(outer?.isConnected?.())return true;}catch(e){}"
+        "const inner=outer?.server;"
+        "return !!inner?._transport;"
+        "}"
+        "const before={connected:serviceConnected(),serverConnected:serverConnected(),token:sessionStorage.getItem('mcp_proxy_token'),port:sessionStorage.getItem('mcp_proxy_port'),href:location.href};"
         "const mismatch=before.token!==targetToken||before.port!==targetPort||!location.hash.includes(targetToken)||!location.hash.includes(targetPort);"
-        "if(mismatch&&svc.disconnect){try{await svc.disconnect();}catch(e){}}"
+        "const needsReconnect=mismatch||!before.serverConnected;"
+        "if(needsReconnect&&svc.disconnect){try{await svc.disconnect();}catch(e){}}"
         "sessionStorage.setItem('mcp_proxy_token',targetToken);"
         "sessionStorage.setItem('mcp_proxy_port',targetPort);"
         "history.replaceState(null,'',targetUrl);"
         "let alreadyConnected=false;"
-        "if(!(svc.isConnected?.()&&!mismatch)){"
+        "if(!serverConnected()){"
         "try{await Promise.race([svc.connect(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('localColabMcpService.connect timed out')),20000))]);}"
         "catch(e){"
         "const msg=String(e?.message||e||'');"
-        "if(msg.includes('MCP server already connected')&&svc.isConnected?.()){alreadyConnected=true;}"
+        "if(msg.includes('MCP server already connected')&&serverConnected()){alreadyConnected=true;}"
         "else{throw e;}"
         "}"
         "}else{alreadyConnected=true;}"
-        "return JSON.stringify({ok:true,before,mismatch,alreadyConnected,connected:svc.isConnected?.(),token:sessionStorage.getItem('mcp_proxy_token'),port:sessionStorage.getItem('mcp_proxy_port'),href:location.href});"
+        "return JSON.stringify({ok:true,before,mismatch,needsReconnect,alreadyConnected,connected:serviceConnected(),serverConnected:serverConnected(),token:sessionStorage.getItem('mcp_proxy_token'),port:sessionStorage.getItem('mcp_proxy_port'),href:location.href});"
         "})()"
     )
     evaluation = _edge_cdp_eval(websocket_url, expression, await_promise=True)
@@ -4587,6 +4595,7 @@ def _connect_colab_tab(
     return bool(
         connected.get("ok")
         and connected.get("connected")
+        and connected.get("serverConnected")
         and connected.get("token") == token
         and connected.get("port") == mcp_port
     )

@@ -366,6 +366,83 @@ class TestControlledEdgeLaunch:
         assert session._connection_timeout_seconds() == 240.0
 
 
+class TestConnectColabTab:
+    def test_requires_frontend_server_connection(self, monkeypatch):
+        mock_eval = Mock(
+            side_effect=[
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {"ready": "complete", "hasService": True}
+                        )
+                    }
+                },
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {
+                                "ok": True,
+                                "connected": True,
+                                "serverConnected": False,
+                                "token": "test-token",
+                                "port": "1234",
+                            }
+                        )
+                    }
+                },
+            ]
+        )
+        monkeypatch.setattr(session, "_edge_cdp_eval", mock_eval)
+
+        connected = session._connect_colab_tab(
+            "ws://devtools.test",
+            "https://colab.research.google.com/notebooks/empty.ipynb#mcpProxyToken=test-token&mcpProxyPort=1234",
+            "test-token",
+            "1234",
+        )
+
+        assert connected is False
+        connect_expression = mock_eval.call_args_list[1].args[1]
+        assert "serverConnected" in connect_expression
+        assert "needsReconnect" in connect_expression
+
+    def test_accepts_frontend_server_connection(self, monkeypatch):
+        mock_eval = Mock(
+            side_effect=[
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {"ready": "complete", "hasService": True}
+                        )
+                    }
+                },
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {
+                                "ok": True,
+                                "connected": True,
+                                "serverConnected": True,
+                                "token": "test-token",
+                                "port": "1234",
+                            }
+                        )
+                    }
+                },
+            ]
+        )
+        monkeypatch.setattr(session, "_edge_cdp_eval", mock_eval)
+
+        connected = session._connect_colab_tab(
+            "ws://devtools.test",
+            "https://colab.research.google.com/notebooks/empty.ipynb#mcpProxyToken=test-token&mcpProxyPort=1234",
+            "test-token",
+            "1234",
+        )
+
+        assert connected is True
+
+
 class TestColabProxyClient:
     def test_is_connected(self, mock_wss):
         client = session.ColabProxyClient(mock_wss)

@@ -1,5 +1,131 @@
 # Steps
 
+## 2026-06-07T08:29:29+05:30 - v0.8.1 patch commit created
+
+- Step name: v0.8.1 patch commit created
+- Action: Ran `git commit -m "fix: reconnect stale signed CDP MCP transport"`.
+- Result: Created patch commit for the signed-CDP stale MCP transport reconnect fix, tests, v0.8.1 release metadata, and required problem/solution documentation.
+
+## 2026-06-07T08:28:54+05:30 - v0.8.1 changes staged
+
+- Step name: v0.8.1 changes staged
+- Action: Ran `git add -A` and `git status --short --branch`.
+- Result: Confirmed staged changes include the v0.8.1 changelog/version bump, stale MCP reconnect code and tests, problem logs, solution logs, steps log, and `uv.lock`.
+
+## 2026-06-07T08:28:31+05:30 - Pre-commit verification passed
+
+- Step name: Pre-commit verification passed
+- Action: Ran `git diff --check`, checked that tag `v0.8.1` does not already exist, confirmed tmux session `colab-opencode-ghosttown-cdp-fixed` is alive, and confirmed listeners on `127.0.0.1:9463` and `127.0.0.1:8768`.
+- Result: Whitespace check passed; the release tag is available; the signed CDP Chrome and live Opencode localhost bridge remain active.
+
+## 2026-06-07T08:27:31+05:30 - Full test and live bridge verification passed
+
+- Step name: Full test and live bridge verification passed
+- Action: Ran `uv run pytest -q`, checked listeners for CDP port `9463` and local proxy port `8768`, and fetched the localhost Ghost Town HTML prefix.
+- Result: Test suite passed with `72 passed, 1 warning`; Chrome CDP is listening on `127.0.0.1:9463`, the Opencode localhost proxy is listening on `127.0.0.1:8768`, and the endpoint returned Ghost Town HTML.
+
+## 2026-06-07T08:26:53+05:30 - Version bumped to v0.8.1
+
+- Step name: Version bumped to v0.8.1
+- Action: Updated `pyproject.toml`, added `CHANGELOG.md` entry `v0.8.1`, and ran `uv lock`.
+- Result: `uv.lock` now records `colab-mcp v0.8.1` for the signed-CDP MCP reconnect reliability patch.
+
+## 2026-06-07T08:26:14+05:30 - Signed CDP solution logs added
+
+- Step name: Signed CDP solution logs added
+- Action: Added solution logs for the Chrome default-profile CDP block, signed-CDP stale MCP transport reconnect, repeated patch-root mistake, and signed-CDP Opencode Drive fallback.
+- Result: Each new problem file now has a matching solution file with what failed, what worked, why it worked, and commands run.
+
+## 2026-06-07T08:23:29+05:30 - Signed CDP Opencode fallback bridge launched
+
+- Step name: Signed CDP Opencode fallback bridge launched
+- Action: Restarted tmux session `colab-opencode-ghosttown-cdp-fixed` with the patched signed CDP attach path and `--no-require-drive --drive-mount-timeout 60`.
+- Result: The fallback run is alive and logging to `/tmp/colab-mcp-opencode-cdp-fixed-fallback.log`; this run should continue with `/content` if Colab Drive cannot mount.
+
+## 2026-06-07T08:22:20+05:30 - Signed CDP strict Drive setup failure logged
+
+- Step name: Signed CDP strict Drive setup failure logged
+- Action: Inspected the generated setup cell and launcher log after the persistent signed-CDP bridge stopped in setup; created `docs/problems/2026-06-07-signed-cdp-opencode-drive-mount-failed.md`.
+- Result: MCP attach and runtime connect succeeded, but strict Drive setup failed with `ValueError: mount failed`, followed by `RuntimeError: Google Drive mount failed` and `RuntimeError: Opencode setup did not emit COLAB_OPENCODE_RESULT`.
+
+## 2026-06-07T08:19:21+05:30 - Persistent signed CDP Opencode bridge launched
+
+- Step name: Persistent signed CDP Opencode bridge launched
+- Action: Started tmux session `colab-opencode-ghosttown-cdp-fixed` running `scripts/colab_opencode_localhost.py` with Ghost Town tmux mode, local port `8768`, Colab port `7685`, CDP port `9463`, and the signed copied `Default` profile.
+- Result: The tmux pane is alive and writing launcher logs to `/tmp/colab-mcp-opencode-cdp-fixed.log` and MCP logs to `/tmp/colab-mcp-opencode-cdp-fixed-mcp.log`.
+
+## 2026-06-07T08:25:42+05:30 - Signed CDP runtime connect verified
+
+- Step name: Signed CDP runtime connect verified
+- Action: Started a fresh `colab-mcp` server, connected it through CDP port `9463`, called `connect_runtime(waitSeconds=180)`, then called `check_runtime`.
+- Result: Runtime automation returned `ok=true`; `check_runtime` returned `status=ok`, Python `3.12.13`, cwd `/content`, terminal backend `colab-terminal`, and platform `Linux-6.6.122+-x86_64-with-glibc2.35`.
+
+## 2026-06-07T08:24:39+05:30 - Signed CDP MCP attach verified three times
+
+- Step name: Signed CDP MCP attach verified three times
+- Action: Ran a live FastMCP client loop that started `colab-mcp` three times with CDP port `9463`, headed copied `Default` profile, and fresh proxy tokens/ports for each cycle.
+- Result: All three cycles returned `opened.result=true` and `connected=true`; CDP inspection confirmed the signed-in account `canbehumanagain@gmail.com`, `serviceConnected=true`, `outerConnected=true`, and inner transport `MZb` on ports `42017`, `38001`, and `33053`.
+
+## 2026-06-07T08:22:52+05:30 - CDP reconnect unit tests passed
+
+- Step name: CDP reconnect unit tests passed
+- Action: Ran `uv run pytest tests/session_test.py -q`.
+- Result: All `53` session tests passed, including the new checks that `_connect_colab_tab()` rejects stale wrapper-only MCP state and accepts real frontend server connection state.
+
+## 2026-06-07T08:22:06+05:30 - CDP stale MCP reconnect fix implemented
+
+- Step name: CDP stale MCP reconnect fix implemented
+- Action: Updated `_connect_colab_tab()` to distinguish Colab's wrapper connection state from the inner frontend MCP server state, force reconnects when the inner server is disconnected, and require `serverConnected` before returning success.
+- Result: Added focused tests covering stale wrapper state rejection and successful inner server connection acceptance.
+
+## 2026-06-07T08:18:04+05:30 - CDP MCP transport probe completed
+
+- Step name: CDP MCP transport probe completed
+- Action: Started a temporary websocket probe on the failed proxy port `38851` and invoked `localColabMcpService.connect()` through the signed-in CDP tab.
+- Result: Colab opened `/?access_token=<redacted>` with `Origin: https://colab.research.google.com` and `Sec-WebSocket-Protocol: mcp`; the frontend inner transport became `MZb`, proving the attach path works when `svc.connect()` is actually invoked.
+
+## 2026-06-07T08:11:40+05:30 - Patch-root repeat problem logged
+
+- Step name: Patch-root repeat problem logged
+- Action: Created `docs/problems/2026-06-07-steps-log-patch-root-repeat.md` inside the nested repository after `apply_patch` again targeted workspace-level `docs/` paths.
+- Result: The repeated local process error is documented; all remaining manual edits in this turn use explicit `better_colab_MCP/...` patch paths from the workspace root.
+
+## 2026-06-07T08:10:00+05:30 - Signed CDP MCP transport problem logged
+
+- Step name: Signed CDP MCP transport problem logged
+- Action: Captured the dead tmux pane and launcher log for `colab-opencode-ghosttown-cdp-tmux`; recorded the headed, signed-in copied-profile timeout in `docs/problems/2026-06-07-signed-cdp-profile-mcp-transport-not-attached.md`.
+- Result: The failure is confirmed as `RuntimeError: Colab MCP did not connect` with `opened={'result': False}` even though CDP inspection showed a signed-in Colab page; the wrapper reported connected while the underlying MCP server transport was absent.
+
+## 2026-06-07T08:02:58+05:30 - Fresh copied-profile bridge launched
+
+- Step name: Fresh copied-profile bridge launched
+- Action: Closed the real Chrome process, removed `/tmp/colab-mcp-opencode-realcopy-profile`, and started tmux session `colab-opencode-ghosttown-cdp-tmux` with Ghost Town tmux mode, local port `8768`, Colab port `7685`, CDP port `9463`, headed Chrome, and a fresh copied `Default` profile.
+- Result: The tmux session is alive under `uv`; initial log output is still empty while the profile copy/browser startup proceeds.
+
+## 2026-06-07T08:02:08+05:30 - Profile copy helper reviewed
+
+- Step name: Profile copy helper reviewed
+- Action: Read `_browser_copy_profile()`, `_skip_profile_copy_path()`, and `_copy_browser_profile()` in `src/colab_mcp/session.py`; checked that Chrome had relaunched with the real profile but no CDP listener.
+- Result: The copy helper excludes lock, singleton, cache, crash, and temp files; because Chrome blocks CDP on the real default data directory, the next attempt uses a fresh non-default copied profile after closing Chrome cleanly.
+
+## 2026-06-07T08:01:26+05:30 - Real Default Chrome CDP block logged
+
+- Step name: Real Default Chrome CDP block logged
+- Action: Logged `docs/problems/2026-06-07-real-default-chrome-cdp-blocked.md` after launching Chrome `Default` with `--remote-debugging-port=9463` failed to open the CDP listener.
+- Result: Chrome reported `DevTools remote debugging requires a non-default data directory`; the real default profile cannot be made CDP-controllable directly with this Chrome version.
+
+## 2026-06-07T07:59:55+05:30 - Stale MCP browser sessions cleaned
+
+- Step name: Stale MCP browser sessions cleaned
+- Action: Killed failed tmux sessions `colab-opencode-ghosttown-default-tmux`, `colab-opencode-ghosttown-visible-tmux`, and `colab-opencode-ghosttown-tmux-start`; terminated the stale copied-profile Chrome process on CDP port `9458`; checked listeners and remaining sessions.
+- Result: Ports `9458`, `9463`, and `8768` are not listening; only the older direct Ghost Town localhost bridge on `127.0.0.1:8766` remains active.
+
+## 2026-06-07T07:59:05+05:30 - Real-profile CDP restart preflight
+
+- Step name: Real-profile CDP restart preflight
+- Action: Checked git status, Chrome/MCP processes, active listeners, tmux sessions, and current timestamp before restarting the real Chrome profile with remote debugging.
+- Result: The repository is clean; the real Chrome `Default` profile is running without a CDP port; the stale copied-profile headless Chrome still listens on `9458`; the older direct Ghost Town localhost bridge still listens on `8766`; failed tmux startup panes are dead.
+
 ## 2026-06-07T07:49:04+05:30 - Local mistake solution logs added
 
 - Step name: Local mistake solution logs added

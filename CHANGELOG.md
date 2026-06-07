@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.8.1 - 2026-06-07
+
+- Fixed signed-CDP Colab MCP reconnects when Colab's wrapper state says connected but the inner MCP transport is stale or missing.
+- Required `_connect_colab_tab()` to verify the frontend MCP server connection before reporting success.
+- Verified a signed copied `Default` Chrome profile on CDP port `9463` can connect MCP three times, connect the runtime, and run terminal-backed runtime checks.
+- Verified the Ghost Town tmux Opencode localhost bridge at `http://127.0.0.1:8768` using signed CDP automation and the documented non-strict Drive fallback.
+
 ## v0.8.0 - 2026-06-07
 
 - Added Ghost Town tmux session mode with `--ghosttown-session-mode tmux` and `--ghosttown-tmux-session`.
