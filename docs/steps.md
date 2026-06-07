@@ -1,5 +1,107 @@
 # Steps
 
+## 2026-06-07T10:54:33+05:30 - Drive rclone quota research logged
+
+- Step name: Drive rclone quota research logged
+- Action: Checked official Google Drive API usage limits and rclone Google Drive backend documentation after the user asked whether rclone rate limits matter.
+- Result: Google Drive API has per-minute/user/project quota units, 750 GB/day upload/copy constraints for Workspace users, and 403/429 rate-limit errors; rclone documents heavy Drive rate limiting, about two files per second for many small files, and recommends staying under roughly 10 transactions per second when using a client ID.
+
+## 2026-06-07T10:51:21+05:30 - Local machine role clarified
+
+- Step name: Local machine role clarified
+- Action: Captured the user's clarification that the local machine should only authenticate, control the Colab browser/MCP connection, and expose the interactive terminal; it should not sync a local project folder by default.
+- Result: The design will make Google Drive the primary workspace for Opencode-created files, with Colab as compute and the local machine as the control surface only.
+
+## 2026-06-07T10:47:08+05:30 - Drive-as-primary-disk requirement captured
+
+- Step name: Drive-as-primary-disk requirement captured
+- Action: Captured the user's clarification that Colab should act as compute, Google Drive should act as the durable hard disk, and `/content` should be treated as disposable runtime storage.
+- Result: The design will make the mounted Drive project directory the primary workspace and use sync tooling only to protect or mirror runtime/session state, not to make `/content` the source of truth.
+
+## 2026-06-07T10:44:09+05:30 - CLI mode requirement captured
+
+- Step name: CLI mode requirement captured
+- Action: Asked whether the new command-line tool should be interactive-only or support both wizard and one-command modes; the user selected both.
+- Result: The design will include an interactive profile/setup wizard plus repeatable non-interactive flags for saved or scripted Colab terminal launches.
+
+## 2026-06-07T10:41:46+05:30 - Brainstorming context explored
+
+- Step name: Brainstorming context explored
+- Action: Read the brainstorming workflow, checked git status and recent commits, inspected `docs/OPENCODE_COLAB.md`, `docs/HEADLESS_COOKIE_MODE.md`, `scripts/launch_colab_drive_terminal.sh`, and searched for existing sync/rclone/rsync support.
+- Result: The repo already has copied-profile CDP auth, profile refresh, Ghost Town tmux terminal, Opencode install, localhost proxy, and Drive persistence; it does not yet have a profile-picker wizard or rclone/rsync project sync workflow.
+
+## 2026-06-07T10:41:46+05:30 - Profile32 reuse timeout problem logged
+
+- Step name: Profile32 reuse timeout problem logged
+- Action: Logged `docs/problems/2026-06-07-open-mcp-connection-timeout-after-profile32-reuse.md` after the interrupted non-strict smoke run timed out during `open_colab_browser_connection`.
+- Result: The timeout is documented as a stale-session cleanup concern for the future CLI design; no behavior changes were made under the brainstorming gate.
+
+## 2026-06-07T10:31:05+05:30 - Strict Drive mount failure logged
+
+- Step name: Strict Drive mount failure logged
+- Action: Logged `docs/problems/2026-06-07-profile32-strict-drive-mount-failed.md` after Profile 32 connected MCP and runtime but the setup cell failed at `drive.mount("/content/drive")`.
+- Result: The authentication problem is solved by Profile 32; the remaining strict Drive-primary setup blocker is Colab Drive authorization.
+
+## 2026-06-07T10:20:54+05:30 - Profile 32 launcher smoke started
+
+- Step name: Profile 32 launcher smoke started
+- Action: Listed Chrome profile metadata and ran `./scripts/launch_colab_drive_terminal.sh shell --profile 'Profile 32' --profile-copy-dir /tmp/colab-mcp-profile32-copy --refresh-profile-copy --no-open --no-tail --exit-after-smoke`.
+- Result: `Profile 32` is the only profile marked `is_consented_primary_account=true`; the launcher started a fresh tmux run with log `/tmp/colab-mcp-colab-drive-terminal-cdp-shell-20260607-102045.log`.
+
+## 2026-06-07T10:17:39+05:30 - Live refresh launcher smoke started
+
+- Step name: Live refresh launcher smoke started
+- Action: Ran `./scripts/launch_colab_drive_terminal.sh shell --refresh-profile-copy --no-open --no-tail --exit-after-smoke`.
+- Result: The launcher started tmux session `colab-drive-terminal-cdp` and created fresh logs `/tmp/colab-mcp-colab-drive-terminal-cdp-shell-20260607-101730.log` and `/tmp/colab-mcp-colab-drive-terminal-cdp-shell-20260607-101730-mcp.log`.
+
+## 2026-06-07T10:17:08+05:30 - Refresh option syntax validation passed
+
+- Step name: Refresh option syntax validation passed
+- Action: Ran `bash -n scripts/launch_colab_drive_terminal.sh`, `./scripts/launch_colab_drive_terminal.sh --help`, and `git diff --check` after adding profile-copy refresh controls.
+- Result: The launcher syntax remains valid, help output includes `--refresh-profile-copy`, and the diff has no whitespace errors.
+
+## 2026-06-07T10:16:02+05:30 - Anonymous copied profile refresh implemented
+
+- Step name: Anonymous copied profile refresh implemented
+- Action: Logged `docs/problems/2026-06-07-drive-launcher-reused-profile-login-required.md`, documented the fix in `docs/solutions/refresh-anonymous-profile-copy.md`, and added `--refresh-profile-copy` / `--reuse-profile-copy` controls to the launcher.
+- Result: The launcher now has a one-command recovery path for a reused copied profile that shows `Sign in` in Colab, while preserving profile reuse by default.
+
+## 2026-06-07T10:14:23+05:30 - Live launcher smoke started
+
+- Step name: Live launcher smoke started
+- Action: Ran `./scripts/launch_colab_drive_terminal.sh shell --no-open --no-tail --exit-after-smoke`.
+- Result: The launcher created tmux session `colab-drive-terminal-cdp` with fresh logs `/tmp/colab-mcp-colab-drive-terminal-cdp-shell-20260607-101416.log` and `/tmp/colab-mcp-colab-drive-terminal-cdp-shell-20260607-101416-mcp.log`.
+
+## 2026-06-07T10:13:47+05:30 - Full Python test suite passed
+
+- Step name: Full Python test suite passed
+- Action: Ran `uv run pytest -q` after adding the launcher script, docs, version bump, and lockfile refresh.
+- Result: The full suite passed with `79 passed, 1 warning`.
+
+## 2026-06-07T10:13:10+05:30 - Launcher syntax validation passed
+
+- Step name: Launcher syntax validation passed
+- Action: Ran `bash -n scripts/launch_colab_drive_terminal.sh`, `./scripts/launch_colab_drive_terminal.sh --help`, `git diff --check`, and version checks across `pyproject.toml`, `uv.lock`, and `CHANGELOG.md`.
+- Result: The launcher syntax is valid, help output renders, whitespace checks are clean, and `v0.9.1` is reflected in the project metadata and changelog.
+
+## 2026-06-07T10:12:35+05:30 - Drive terminal launcher implemented
+
+- Step name: Drive terminal launcher implemented
+- Action: Added `scripts/launch_colab_drive_terminal.sh`, made it executable, updated `docs/OPENCODE_COLAB.md`, bumped the project version to `v0.9.1`, updated `CHANGELOG.md`, and refreshed `uv.lock`.
+- Result: The user can start a Drive-rooted shell with `./scripts/launch_colab_drive_terminal.sh shell` or start Opencode with `./scripts/launch_colab_drive_terminal.sh opencode` without pasting a fragile multiline tmux command.
+
+## 2026-06-07T10:08:17+05:30 - Wrapped tmux launch failure logged
+
+- Step name: Wrapped tmux launch failure logged
+- Action: Recorded the 10:05 shell-mode launch failure in `docs/problems/2026-06-07-wrapped-tmux-command-stale-log.md` and documented the repeated-error alternatives in `docs/solutions/drive-terminal-launcher-script.md`.
+- Result: The current failure is separated from the older runtime traceback: tmux exited with status `127`, ports `8768` and `9463` were not listening, and the displayed traceback came from stale logs.
+
+## 2026-06-07T10:06:59+05:30 - Runtime refusal recurrence inspected
+
+- Step name: Runtime refusal recurrence inspected
+- Action: Checked existing problem logs, current git state, tmux pane state, stale log timestamps, CDP/local proxy listeners, and process state after the user's 10:05 launch failed.
+- Result: The runtime refusal was already logged earlier, so the second occurrence triggered the repeated-error path; the live 10:05 failure is a wrapped tmux command with stale log output.
+
 ## 2026-06-07T10:00:28+05:30 - v0.9.0 implementation committed
 
 - Step name: v0.9.0 implementation committed
@@ -1655,3 +1757,63 @@
 - Step name: Browser-control execution alternatives evaluated
 - Action: Attached Playwright to Chrome CDP port `9458`, inspected the Colab page DOM, clicked the first `colab-run-button`, then focused cell `0` and sent `Ctrl+Enter`.
 - Result: The Colab page and focused setup cell were found, but both browser actions left cell `0` output empty for the polling window; browser click and keyboard execution are not reliable startup paths in this session.
+
+## 2026-06-07T10:59:10+05:30 - Colab notebook persistence research logged
+
+- Step name: Colab notebook persistence research logged
+- Action: Checked official Colab documentation after the user asked whether Drive-selected notebooks sync only the notebook or the full runtime environment.
+- Result: Colab notebooks are stored in Drive, but Colab-managed virtual machines and their local files/libraries are temporary; durable project files must be written into mounted Drive or another persistent store.
+
+## 2026-06-07T11:04:02+05:30 - Interactive temp-mode requirement captured
+
+- Step name: Interactive temp-mode requirement captured
+- Action: Captured the user's clarification that `/content` temp mode should be available through the default interactive wizard, with command-line flags only as the secondary automation path.
+- Result: The CLI design must default to an interactive persistence choice, recommend Drive-backed work, and only use temporary `/content` mode after explicit user selection or an explicit automation flag.
+
+## 2026-06-07T11:07:31+05:30 - Drive-first temp-fallback approach approved
+
+- Step name: Drive-first temp-fallback approach approved
+- Action: Captured the user's approval of a Drive-first wizard with explicit temporary `/content` fallback.
+- Result: The design direction is approved at the storage-policy level; next step is to present the wizard flow and recovery model for review before writing the spec.
+
+## 2026-06-07T11:10:29+05:30 - Shell default and distro feasibility researched
+
+- Step name: Shell default and distro feasibility researched
+- Action: Captured the user's clarification that the terminal should default to a plain shell, then checked Colab runtime and rootless distro tooling documentation for feasibility of running minimal Arch or another distro in Colab.
+- Result: The design should default to a shell terminal where users can install OpenCode manually; alternate Linux distributions are feasible only as optional userland/proot environments, not as a replacement for Colab's Ubuntu VM.
+
+## 2026-06-07T11:13:01+05:30 - Native Ubuntu shell default approved
+
+- Step name: Native Ubuntu shell default approved
+- Action: Captured the user's approval that the recommended default should be the native Colab Ubuntu shell.
+- Result: The CLI wizard design will open a native Colab Ubuntu shell by default; OpenCode installation and proot-based distro layers are optional user actions or advanced choices, not the default startup path.
+
+## 2026-06-07T11:16:20+05:30 - Config and session persistence concern captured
+
+- Step name: Config and session persistence concern captured
+- Action: Captured the user's concern about where `.config` files and application session data will be stored when the terminal runs inside Colab.
+- Result: The design must include a clear XDG persistence model so apps that look in normal locations like `~/.config` and `~/.local/share` can recover settings and sessions after a Colab runtime reset.
+
+## 2026-06-07T11:17:32+05:30 - Feasibility confidence assessed
+
+- Step name: Feasibility confidence assessed
+- Action: Assessed whether the Drive-first Colab terminal design can work with persistent project files, XDG config/app-data persistence, and a native Ubuntu shell default.
+- Result: The core workflow is feasible, but reliability depends on treating the Colab runtime as disposable, keeping heavy caches out of Drive by default, and rebuilding runtime services on reconnect.
+
+## 2026-06-07T11:19:35+05:30 - Build request accepted for spec handoff
+
+- Step name: Build request accepted for spec handoff
+- Action: Captured the user's request to start building after approving the Drive-first wizard, native Ubuntu shell default, and persistence direction.
+- Result: Moving from brainstorming into a written design spec before implementation planning, so the build has a clear committed contract.
+
+## 2026-06-07T11:21:25+05:30 - Wizard design spec self-reviewed
+
+- Step name: Wizard design spec self-reviewed
+- Action: Added `docs/superpowers/specs/2026-06-07-colab-drive-terminal-wizard-design.md`, checked it for placeholders, ran `git diff --check`, and validated the pending launcher script with `bash -n`.
+- Result: The spec has no placeholder markers, whitespace checks pass, and the pending launcher script syntax is valid.
+
+## 2026-06-07T11:22:18+05:30 - Test suite passed before spec commit
+
+- Step name: Test suite passed before spec commit
+- Action: Ran `uv run pytest -q` before committing the pending launcher, documentation, version bump, and wizard design spec.
+- Result: The test suite passed with `79 passed, 1 warning`.

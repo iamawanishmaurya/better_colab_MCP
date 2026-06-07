@@ -56,6 +56,12 @@ back to the requested runtime directory if Colab refuses or times out.
 The web terminal can open either Opencode or a normal shell:
 
 ```shell
+# Recommended: plain Drive-rooted shell terminal with fresh logs and tmux.
+./scripts/launch_colab_drive_terminal.sh shell
+
+# Same launcher, but start Opencode immediately in the Colab tmux session.
+./scripts/launch_colab_drive_terminal.sh opencode
+
 # Default: open Opencode immediately.
 uv run python scripts/colab_opencode_localhost.py \
   --terminal-backend ghosttown \
@@ -78,6 +84,40 @@ When Drive mounts and `--cwd` is left as `/content`, both modes start in:
 That makes Google Drive the primary project disk for the terminal. Opencode is
 still installed and on `PATH` in shell mode, so you can type `opencode` manually
 from the shell whenever you want the TUI.
+
+The launcher script is the safest local entrypoint for repeated use. It avoids
+long pasted tmux commands, creates fresh log files for every run, replaces the
+old local tmux session by default, waits until localhost is actually listening,
+and then opens:
+
+```text
+http://127.0.0.1:8768/new
+```
+
+Useful launcher overrides:
+
+```shell
+./scripts/launch_colab_drive_terminal.sh shell --no-require-drive
+./scripts/launch_colab_drive_terminal.sh shell --refresh-profile-copy
+./scripts/launch_colab_drive_terminal.sh shell --local-port 8769 --colab-port 7687
+./scripts/launch_colab_drive_terminal.sh opencode --browser-headless
+./scripts/launch_colab_drive_terminal.sh shell --no-tail
+```
+
+Use `--refresh-profile-copy` when the controlled browser shows `Sign in` even
+though your real Chrome `Default` profile is signed in. It stops the controlled
+Chrome process for the selected CDP/profile copy and rebuilds the dedicated copy
+from the source profile.
+
+On this machine, the signed Colab runtime profile is currently `Profile 32`, not
+`Default`. Use this when the `Default` copy shows `Sign in`:
+
+```shell
+./scripts/launch_colab_drive_terminal.sh shell \
+  --profile 'Profile 32' \
+  --profile-copy-dir /tmp/colab-mcp-profile32-copy \
+  --refresh-profile-copy
+```
 
 ## Ghost Town Backend
 

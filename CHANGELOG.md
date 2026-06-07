@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.9.1 - 2026-06-07
+
+- Added `scripts/launch_colab_drive_terminal.sh` as the recommended short launcher for Drive-rooted Colab shell or Opencode terminal sessions.
+- The launcher creates fresh per-run logs, owns the tmux command with shell arrays, waits for localhost `/new` before opening it, and defaults to the visible copied `Default` Chrome profile on CDP port `9463`.
+- Added `--refresh-profile-copy` to rebuild an anonymous copied Chrome profile from the real source profile before connecting Colab.
+- Documented the wrapped tmux command and stale-log failure that made an old runtime-connect traceback look current.
+- Added the Colab Drive terminal wizard design spec for interactive Chrome profile selection, Drive-first persistence, native Ubuntu shell defaults, and explicit temporary `/content` fallback.
+
 ## v0.9.0 - 2026-06-07
 
 - Added `--terminal-command {opencode,shell}` and `COLAB_OPENCODE_TERMINAL_COMMAND` for the web terminal, localhost bridge, and reconnect supervisor.
