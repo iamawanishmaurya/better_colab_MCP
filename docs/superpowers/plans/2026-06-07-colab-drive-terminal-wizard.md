@@ -443,7 +443,7 @@ uv run pytest tests/drive_terminal_wizard_test.py -q
 
 Expected: all wizard helper tests pass.
 
-- [ ] **Step 6: Commit Task 2**
+- [x] **Step 6: Commit Task 2**
 
 Run:
 
