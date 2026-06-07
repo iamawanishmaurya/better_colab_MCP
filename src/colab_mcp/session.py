@@ -27,6 +27,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 import urllib.parse
 import urllib.request
@@ -61,6 +62,7 @@ BROWSER_COOKIE_FILE_ENV = "COLAB_MCP_BROWSER_COOKIE_FILE"
 BROWSER_COPY_PROFILE_ENV = "COLAB_MCP_BROWSER_COPY_PROFILE"
 BROWSER_REUSE_PROFILE_COPY_ENV = "COLAB_MCP_BROWSER_REUSE_PROFILE_COPY"
 BROWSER_PROFILE_COPY_DIR_ENV = "COLAB_MCP_BROWSER_PROFILE_COPY_DIR"
+BROWSER_LAUNCH_LOG_ENV = "COLAB_MCP_BROWSER_LAUNCH_LOG"
 BROWSER_PRINT_CONNECTION_URL_ENV = "COLAB_MCP_PRINT_CONNECTION_URL"
 BROWSER_DISABLE_LOCAL_NETWORK_CHECKS_ENV = (
     "COLAB_MCP_BROWSER_DISABLE_LOCAL_NETWORK_CHECKS"
@@ -3089,6 +3091,27 @@ def _skip_profile_copy_path(path: Path) -> bool:
     )
 
 
+def _cleanup_profile_runtime_locks(profile: Path) -> tuple[list[str], list[dict]]:
+    if not profile.exists():
+        return [], []
+    removed: list[str] = []
+    failures: list[dict] = []
+    for child in profile.iterdir():
+        if not child.name.startswith("Singleton"):
+            continue
+        try:
+            if child.is_symlink() or child.is_file():
+                child.unlink()
+            elif child.is_dir():
+                shutil.rmtree(child)
+            else:
+                child.unlink()
+            removed.append(str(child))
+        except OSError as exc:
+            failures.append({"path": str(child), "error": str(exc)})
+    return removed, failures
+
+
 def _copy_path_best_effort(source: Path, target: Path, failures: list[dict]) -> int:
     if _skip_profile_copy_path(source):
         return 0
@@ -3118,6 +3141,7 @@ def _copy_browser_profile(source: Path, target: Path, profile_directory: str | N
         raise ValueError("Profile copy target must be different from the source user data dir.")
     selected_profile = profile_directory or "Default"
     if _browser_reuse_profile_copy() and (target / selected_profile).exists():
+        removed_locks, lock_failures = _cleanup_profile_runtime_locks(target)
         return {
             "source": str(source),
             "target": str(target),
@@ -3126,6 +3150,9 @@ def _copy_browser_profile(source: Path, target: Path, profile_directory: str | N
             "reused": True,
             "failures": [],
             "truncatedFailures": 0,
+            "runtimeLocksRemoved": removed_locks,
+            "runtimeLockFailures": lock_failures[:20],
+            "truncatedRuntimeLockFailures": max(0, len(lock_failures) - 20),
         }
     if target.exists():
         shutil.rmtree(target)
@@ -3150,6 +3177,7 @@ def _copy_browser_profile(source: Path, target: Path, profile_directory: str | N
             }
         )
 
+    removed_locks, lock_failures = _cleanup_profile_runtime_locks(target)
     return {
         "source": str(source),
         "target": str(target),
@@ -3158,6 +3186,9 @@ def _copy_browser_profile(source: Path, target: Path, profile_directory: str | N
         "reused": False,
         "failures": failures[:20],
         "truncatedFailures": max(0, len(failures) - 20),
+        "runtimeLocksRemoved": removed_locks,
+        "runtimeLockFailures": lock_failures[:20],
+        "truncatedRuntimeLockFailures": max(0, len(lock_failures) - 20),
     }
 
 
@@ -3384,6 +3415,27 @@ def _controlled_browser_command(url: str, *, port: str) -> list[str]:
     return command
 
 
+def _browser_launch_log_path(port: str) -> Path:
+    configured = os.environ.get(BROWSER_LAUNCH_LOG_ENV)
+    if configured:
+        return Path(configured).expanduser()
+    return Path(tempfile.gettempdir()) / f"colab-mcp-controlled-browser-{port}.log"
+
+
+def _redact_sensitive_text(text: str) -> str:
+    return re.sub(r"(mcpProxyToken=)[^&#\s]+", r"\1<redacted>", text)
+
+
+def _browser_launch_log_tail(path: Path, *, max_chars: int = 4000) -> str:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return f"Could not read browser launch log: {exc}"
+    if not text:
+        return "No browser output captured."
+    return _redact_sensitive_text(text[-max_chars:])
+
+
 def _ensure_controlled_edge(url: str, *, port: str) -> None:
     if _cdp_alive(port):
         return
@@ -3400,20 +3452,43 @@ def _ensure_controlled_edge(url: str, *, port: str) -> None:
     command = _controlled_browser_command(launch_url, port=port)
     if _env_bool(BROWSER_PRINT_CONNECTION_URL_ENV):
         print(f"Colab MCP connection URL: {url}", file=sys.stderr, flush=True)
-    subprocess.Popen(
-        command,
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        stdin=subprocess.DEVNULL,
-        close_fds=True,
-        creationflags=creationflags,
-    )
+    launch_log = _browser_launch_log_path(port)
+    try:
+        launch_log.parent.mkdir(parents=True, exist_ok=True)
+        with launch_log.open("ab") as browser_log:
+            redacted_command = _redact_sensitive_text(shlex.join(command))
+            browser_log.write(
+                (
+                    f"\n--- {time.strftime('%Y-%m-%dT%H:%M:%S%z')} "
+                    f"Colab MCP controlled browser launch ---\n"
+                    f"Command: {redacted_command}\n"
+                ).encode("utf-8", errors="replace")
+            )
+            browser_log.flush()
+            subprocess.Popen(
+                command,
+                stdout=browser_log,
+                stderr=subprocess.STDOUT,
+                stdin=subprocess.DEVNULL,
+                close_fds=True,
+                creationflags=creationflags,
+            )
+    except OSError as exc:
+        raise RuntimeError(
+            "Failed to launch controlled browser: "
+            f"{exc}. Browser launch log: {launch_log}\n"
+            f"{_browser_launch_log_tail(launch_log)}"
+        ) from exc
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         if _cdp_alive(port):
             return
         time.sleep(0.25)
-    raise TimeoutError(f"Timed out waiting for Edge CDP on port {port}.")
+    raise TimeoutError(
+        f"Timed out waiting for Edge CDP on port {port}. "
+        f"Browser launch log: {launch_log}\n"
+        f"{_browser_launch_log_tail(launch_log)}"
+    )
 
 
 def _colab_page_websocket_url() -> str:
@@ -4572,7 +4647,8 @@ def _navigate_controlled_edge(
                 fresh_target["webSocketDebuggerUrl"], url, str(token), str(mcp_port)
             )
         return True
-    except Exception:
+    except Exception as exc:
+        logging.exception("Controlled browser navigation failed: %s", exc)
         return False
 
 

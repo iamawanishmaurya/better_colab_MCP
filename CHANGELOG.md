@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.10.2 - 2026-06-07
+
+- Fixed copied Chrome profile reuse to remove stale `Singleton*` runtime lock files before launching the controlled Colab browser.
+- Added controlled browser launch logs with redacted commands and CDP timeout log tails so Chrome startup failures no longer appear as silent MCP connection hangs.
+- Documented the Profile 32 CDP launch hang observed after the Drive terminal wizard fell back from a non-primary Chrome profile.
+
 ## v0.10.1 - 2026-06-07
 
 - Fixed the Drive terminal wizard to use a separate copied Chrome profile directory for each selected Chrome profile, preventing stale anonymous Colab auth from leaking between profiles.

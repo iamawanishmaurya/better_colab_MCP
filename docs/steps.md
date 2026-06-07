@@ -1991,3 +1991,81 @@
 - Step name: Global Colab drive terminal launcher installed
 - Action: Logged the `uv run colab-drive-terminal` failure from `~`, created `/home/astra/.local/bin/colab-drive-terminal`, made it executable, and tested both `/home/astra/.local/bin/colab-drive-terminal --help` and `uv run colab-drive-terminal --help` from `/home/astra`.
 - Result: The command now works from outside the repository; problem and solution docs were added at `docs/problems/2026-06-07-global-colab-drive-terminal-command-missing.md` and `docs/solutions/global-colab-drive-terminal-launcher.md`.
+
+## 2026-06-07T13:01:41+05:30 - Profile 32 CDP hang logged
+
+- Step name: Profile 32 CDP hang logged
+- Action: Captured the user's paused `uv run colab-drive-terminal` run after the wizard fell back from `Default` to `Profile 32`, checked listeners and Chrome processes, and recorded the missing CDP listener plus stale copied-profile `Singleton*` files.
+- Result: The problem is documented at `docs/problems/2026-06-07-profile32-cdp-launch-hang.md`; first hypothesis is stale copied-profile runtime locks plus hidden browser launch diagnostics.
+
+## 2026-06-07T13:03:30+05:30 - Profile 32 CDP fix strategy selected
+
+- Step name: Profile 32 CDP fix strategy selected
+- Action: Evaluated five fixes: refresh every profile copy, kill stale processes, add browser logs only, remove stale copied-profile `Singleton*` locks before launch, and add wizard preflight checks.
+- Result: Selected copied-profile lock cleanup plus browser launch log diagnostics. Confidence is 100% for this local strategy because it only mutates temporary copied Chrome profiles and improves evidence if Chrome still fails.
+
+## 2026-06-07T13:05:23+05:30 - Profile 32 CDP failing tests confirmed
+
+- Step name: Profile 32 CDP failing tests confirmed
+- Action: Added focused tests for reused copied-profile `Singleton*` cleanup and CDP timeout launch-log diagnostics, then ran the two new tests.
+- Result: Both tests failed as expected: copied-profile runtime locks remained in place and the timeout message did not include the browser launch log path or tail.
+
+## 2026-06-07T13:07:10+05:30 - Profile 32 CDP patch implemented
+
+- Step name: Profile 32 CDP patch implemented
+- Action: Updated the session browser launch path to remove stale `Singleton*` files from reused copied Chrome profiles, capture controlled Chrome stdout and stderr to a launch log, include the log tail in CDP timeout errors, and log browser navigation exceptions.
+- Result: Focused tests now pass with `2 passed in 2.44s`.
+
+## 2026-06-07T13:08:38+05:30 - v0.10.2 metadata updated
+
+- Step name: v0.10.2 metadata updated
+- Action: Bumped `pyproject.toml` to `0.10.2`, added the `v0.10.2` changelog entry, and refreshed `uv.lock`.
+- Result: `uv lock` completed and updated `colab-mcp v0.10.1 -> v0.10.2`.
+
+## 2026-06-07T13:09:26+05:30 - v0.10.2 full tests passed
+
+- Step name: v0.10.2 full tests passed
+- Action: Ran the full test suite with `uv run pytest -q`.
+- Result: Test suite passed with `93 passed, 1 warning in 8.25s`.
+
+## 2026-06-07T13:11:25+05:30 - Profile 32 lock cleanup verified
+
+- Step name: Profile 32 lock cleanup verified
+- Action: Ran the wizard dry-run from `/home/astra`, checked package version `0.10.2`, confirmed the real copied Profile 32 directory had stale `SingletonCookie`, `SingletonSocket`, and `SingletonLock`, invoked the patched browser command builder, and checked the directory again.
+- Result: The dry-run still falls back from `Default` to `Profile 32`, the installed project reports `0.10.2`, and `/tmp/colab-mcp-drive-terminal-profile-copy-profile-32` no longer contains `Singleton*` files after the patched path runs.
+
+## 2026-06-07T13:13:04+05:30 - Profile 32 CDP solution documented
+
+- Step name: Profile 32 CDP solution documented
+- Action: Created the matching solution document with the failure, selected fix, alternatives considered, why the fix works, commands run, and verification evidence.
+- Result: Solution is recorded at `docs/solutions/profile32-cdp-launch-hang.md` and links back to the problem file.
+
+## 2026-06-07T13:16:12+05:30 - Profile 32 CDP launch smoke verified
+
+- Step name: Profile 32 CDP launch smoke verified
+- Action: Launched the controlled Chrome path on spare CDP ports `9477` and `9478` with the copied Profile 32 directory, checked launch logs and process/listener state, then cleaned the copied profile again.
+- Result: The first smoke returned `cdp ok`; the parent-alive smoke returned `alive_after_5s True`; the copied profile was left without `Singleton*` files for the next user run.
+
+## 2026-06-07T13:17:20+05:30 - Stuck run cleared
+
+- Step name: Stuck run cleared
+- Action: Checked for the original `colab-drive-terminal` and `colab_opencode_localhost.py` processes, checked ports `8768`, `9463`, and `7686`, and rechecked copied Profile 32 runtime locks.
+- Result: No matching stuck process was running, the ports were free, and the copied Profile 32 directory had no `Singleton*` files.
+
+## 2026-06-07T13:18:05+05:30 - v0.10.2 pre-commit checks passed
+
+- Step name: v0.10.2 pre-commit checks passed
+- Action: Ran `git diff --check`, inspected `git status --short --branch`, and reviewed the diff stat.
+- Result: Whitespace check passed; modified files and new problem/solution docs are ready to stage for the `v0.10.2` release commit.
+
+## 2026-06-07T13:18:52+05:30 - v0.10.2 staged status confirmed
+
+- Step name: v0.10.2 staged status confirmed
+- Action: Ran `git add -A` and confirmed staged status with `git status --short --branch`.
+- Result: Release files, tests, changelog, lockfile, and problem/solution docs are staged for commit.
+
+## 2026-06-07T13:19:33+05:30 - v0.10.2 release commit created
+
+- Step name: v0.10.2 release commit created
+- Action: Created the release commit with message `fix: clean copied Chrome profile locks`.
+- Result: The commit contains the copied-profile lock cleanup, browser launch diagnostics, tests, changelog, lockfile update, and problem/solution documentation.

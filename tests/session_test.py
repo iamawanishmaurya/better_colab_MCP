@@ -388,6 +388,66 @@ class TestControlledEdgeLaunch:
             encoding="utf-8"
         ) == "signed-copy"
 
+    def test_copy_profile_reuse_removes_stale_runtime_locks(
+        self, monkeypatch, tmp_path
+    ):
+        source = tmp_path / "source"
+        target = tmp_path / "target"
+        (source / "Default").mkdir(parents=True)
+        (target / "Default").mkdir(parents=True)
+        (target / "Default" / "Preferences").write_text("signed-copy", encoding="utf-8")
+        (target / "SingletonCookie").write_text("cookie", encoding="utf-8")
+        (target / "SingletonLock").write_text("lock", encoding="utf-8")
+        (target / "SingletonSocket").symlink_to(tmp_path / "missing-socket")
+        monkeypatch.setenv(session.BROWSER_COMMAND_ENV, "google-chrome-stable")
+        monkeypatch.setenv(session.BROWSER_USER_DATA_DIR_ENV, str(source))
+        monkeypatch.setenv(session.BROWSER_PROFILE_ENV, "Default")
+        monkeypatch.setenv(session.BROWSER_COPY_PROFILE_ENV, "1")
+        monkeypatch.setenv(session.BROWSER_PROFILE_COPY_DIR_ENV, str(target))
+        monkeypatch.setattr(
+            session.shutil,
+            "which",
+            lambda name: "/usr/bin/google-chrome-stable"
+            if name == "google-chrome-stable"
+            else None,
+        )
+
+        command = session._controlled_browser_command(
+            "https://example.test", port="9457"
+        )
+
+        assert f"--user-data-dir={target}" in command
+        assert (target / "Default" / "Preferences").read_text(
+            encoding="utf-8"
+        ) == "signed-copy"
+        assert not (target / "SingletonCookie").exists()
+        assert not (target / "SingletonLock").exists()
+        assert not (target / "SingletonSocket").exists()
+
+    def test_ensure_controlled_edge_timeout_includes_browser_log_tail(
+        self, monkeypatch, tmp_path
+    ):
+        alive = Mock(return_value=False)
+        popen = Mock()
+        edge_path = tmp_path / "msedge.exe"
+        edge_path.write_text("", encoding="utf-8")
+        profile = tmp_path / "profile"
+        launch_log = tmp_path / "browser.log"
+        launch_log.write_text("Chrome failed before CDP\n", encoding="utf-8")
+        monkeypatch.setenv(session.EDGE_PROFILE_ENV, str(profile))
+        monkeypatch.setenv("COLAB_MCP_BROWSER_LAUNCH_LOG", str(launch_log))
+        monkeypatch.setattr(session, "_cdp_alive", alive)
+        monkeypatch.setattr(session, "_edge_executable_path", Mock(return_value=str(edge_path)))
+        monkeypatch.setattr(session.subprocess, "Popen", popen)
+        monkeypatch.setattr(session.time, "monotonic", Mock(side_effect=[0, 21]))
+
+        with pytest.raises(TimeoutError) as exc_info:
+            session._ensure_controlled_edge("https://example.test", port="9333")
+
+        message = str(exc_info.value)
+        assert str(launch_log) in message
+        assert "Chrome failed before CDP" in message
+
     def test_cookie_file_diagnostics_redacts_values(self, monkeypatch, tmp_path):
         cookie_file = tmp_path / "cookies.json"
         cookie_file.write_text(
