@@ -1943,3 +1943,9 @@
 - Step name: Task 5 release validation completed
 - Action: Ran `bash -n scripts/launch_colab_drive_terminal.sh`, `python -m py_compile scripts/colab_drive_terminal.py`, `uv run pytest -q`, `git diff --check`, and dry-run wizard launches for `Profile 32` in Drive and explicit temporary modes.
 - Result: Syntax, compile, whitespace, and full tests passed with `88 passed, 1 warning`; Drive dry-run generated `--drive-persistence --require-drive` and `/content/drive/MyDrive/colab-terminal/projects/smoke`; temp dry-run generated `--no-drive-persistence --no-require-drive` and `/content/colab-terminal/projects/smoke`. Live smoke was skipped to avoid disrupting an already-running older local Colab bridge.
+
+## 2026-06-07T11:55:18+05:30 - v0.10.0 release tagged
+
+- Step name: v0.10.0 release tagged
+- Action: Committed validation logs as `docs: record Colab terminal wizard validation`, created tag `v0.10.0` at commit `aa4780b`, and pushed tags to `fork`.
+- Result: Tag `v0.10.0` is available on `https://github.com/iamawanishmaurya/better_colab_MCP.git`.

@@ -767,7 +767,7 @@ Result: skipped for this release validation because an older `colab_opencode_loc
 
 Append a `docs/steps.md` entry with the exact commands, result, and timestamp.
 
-- [ ] **Step 5: Commit validation log**
+- [x] **Step 5: Commit validation log**
 
 Run:
 
@@ -780,7 +780,7 @@ git push fork master
 
 Expected: validation log is pushed.
 
-- [ ] **Step 6: Tag and push `v0.10.0`**
+- [x] **Step 6: Tag and push `v0.10.0`**
 
 Run:
 
