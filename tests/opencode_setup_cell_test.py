@@ -14,8 +14,42 @@ def test_setup_cell_code_compiles_for_ttyd_backend():
     compile(code, "<opencode-ttyd-setup>", "exec")
     assert "install_ttyd()" in code
     assert "start_ttyd()" in code
-    assert "opencode.ipynb" in code
+    assert "colab-terminal.ipynb" in code
     assert "ensure_persistent_dir" in code
+
+
+def test_setup_cell_defaults_to_shell_and_colab_terminal_drive_root():
+    code = setup_cell_code(port=7681, cwd="/content", install_timeout=600)
+
+    compile(code, "<colab-terminal-default-setup>", "exec")
+    assert "TERMINAL_COMMAND = 'shell'" in code
+    assert "DRIVE_FOLDER = '/content/drive/MyDrive/colab-terminal'" in code
+    assert "NOTEBOOK_NAME = 'colab-terminal.ipynb'" in code
+    assert "COLAB_TERMINAL_RESULT " in code
+    assert '\ninstall_opencode()\nrun("opencode --version", timeout=60)' not in code
+
+
+def test_setup_cell_persists_xdg_config_and_share_to_drive():
+    code = setup_cell_code(port=7681, cwd="/content", install_timeout=600)
+
+    compile(code, "<colab-terminal-xdg-setup>", "exec")
+    assert 'ensure_persistent_dir("~/.config", drive_root / "home" / ".config")' in code
+    assert 'ensure_persistent_dir("~/.local/share", drive_root / "home" / ".local" / "share")' in code
+    assert 'ensure_temporary_cache_dir("~/.cache", "/content/colab-terminal-cache")' in code
+
+
+def test_setup_cell_can_auto_install_opencode_for_opencode_mode():
+    code = setup_cell_code(
+        port=7681,
+        cwd="/content",
+        install_timeout=600,
+        terminal_command="opencode",
+    )
+
+    compile(code, "<colab-terminal-opencode-setup>", "exec")
+    assert "TERMINAL_COMMAND = 'opencode'" in code
+    assert "install_opencode()" in code
+    assert 'run("opencode --version", timeout=60)' in code
 
 
 def test_setup_cell_code_compiles_for_ghosttown_backend():
@@ -27,7 +61,7 @@ def test_setup_cell_code_compiles_for_ghosttown_backend():
     assert "ghosttown -p " in code
     assert "write_ghosttown_shell()" in code
     assert "SHELL=" in code
-    assert "opencode-ghosttown-shell.sh" in code
+    assert "colab-terminal-ghosttown-shell.sh" in code
 
 
 def test_setup_cell_code_compiles_for_ghosttown_tmux_mode():

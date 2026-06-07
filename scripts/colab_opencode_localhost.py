@@ -69,16 +69,16 @@ def redact_url(url: str) -> str:
 
 
 def parse_setup_result(output: str) -> dict:
-    marker = "COLAB_OPENCODE_RESULT "
-    marker_index = output.find(marker)
-    if marker_index >= 0:
-        decoder = json.JSONDecoder()
-        payload = output[marker_index + len(marker) :].lstrip()
-        result, _end = decoder.raw_decode(payload)
-        if not isinstance(result, dict):
-            raise RuntimeError(f"Opencode setup emitted non-object result: {result!r}")
-        return result
-    raise RuntimeError("Opencode setup did not emit COLAB_OPENCODE_RESULT.")
+    for marker in ("COLAB_TERMINAL_RESULT ", "COLAB_OPENCODE_RESULT "):
+        marker_index = output.find(marker)
+        if marker_index >= 0:
+            decoder = json.JSONDecoder()
+            payload = output[marker_index + len(marker) :].lstrip()
+            result, _end = decoder.raw_decode(payload)
+            if not isinstance(result, dict):
+                raise RuntimeError(f"Colab terminal setup emitted non-object result: {result!r}")
+            return result
+    raise RuntimeError("Colab terminal setup did not emit COLAB_TERMINAL_RESULT.")
 
 
 def build_target_url(remote_base: str, request: web.Request, *, websocket: bool = False) -> str:
@@ -434,16 +434,16 @@ async def run(args: argparse.Namespace) -> None:
     extra_headers, cookie_summary = proxy_auth_headers(args.cdp_port, remote_url)
     print(f"Colab proxy auth cookies: {json.dumps(cookie_summary, sort_keys=True)}", flush=True)
     runner = await start_local_proxy(remote_url, args.local_host, args.local_port, extra_headers)
-    print(f"Opencode backend: {setup.get('terminalBackend')}", flush=True)
+    print(f"Terminal backend: {setup.get('terminalBackend')}", flush=True)
     print(f"Terminal command: {setup.get('terminalCommand')}", flush=True)
     if setup.get("terminalBackend") == "ghosttown":
         print(f"Ghost Town session mode: {setup.get('ghosttownSessionMode')}", flush=True)
         if setup.get("ghosttownTmuxSession"):
             print(f"Ghost Town tmux session: {setup.get('ghosttownTmuxSession')}", flush=True)
             print(f"Ghost Town tmux attach command: {setup.get('ghosttownTmuxAttachCommand')}", flush=True)
-    print(f"Opencode workdir: {setup.get('workdir')}", flush=True)
-    print(f"Opencode recovery files: {json.dumps(setup.get('recoveryFiles') or [])}", flush=True)
-    print(f"Opencode Colab proxy URL: {remote_url}", flush=True)
+    print(f"Terminal workdir: {setup.get('workdir')}", flush=True)
+    print(f"Terminal recovery files: {json.dumps(setup.get('recoveryFiles') or [])}", flush=True)
+    print(f"Terminal Colab proxy URL: {remote_url}", flush=True)
     print(f"Localhost URL: {local_url}", flush=True)
     if setup.get("terminalBackend") == "ghosttown":
         label = "Opencode" if setup.get("terminalCommand") == "opencode" else "shell"

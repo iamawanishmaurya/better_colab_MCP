@@ -31,7 +31,7 @@
 - Modify: `scripts/colab_opencode_localhost.py`
 - Modify: `tests/opencode_setup_cell_test.py`
 
-- [ ] **Step 1: Write failing tests for terminal-first defaults**
+- [x] **Step 1: Write failing tests for terminal-first defaults**
 
 Add these tests to `tests/opencode_setup_cell_test.py`:
 
@@ -70,7 +70,7 @@ def test_setup_cell_can_auto_install_opencode_for_opencode_mode():
     assert "run(\"opencode --version\", timeout=60)" in code
 ```
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -80,7 +80,7 @@ uv run pytest tests/opencode_setup_cell_test.py -q
 
 Expected: the new tests fail because the current defaults still use `/content/drive/MyDrive/opencode`, `opencode.ipynb`, and `TERMINAL_COMMAND = 'opencode'`.
 
-- [ ] **Step 3: Update setup defaults and generated persistence code**
+- [x] **Step 3: Update setup defaults and generated persistence code**
 
 In `scripts/colab_opencode_web_terminal.py`, set:
 
@@ -138,7 +138,7 @@ emit("COLAB_TERMINAL_RESULT " + payload)
 emit("COLAB_OPENCODE_RESULT " + payload)
 ```
 
-- [ ] **Step 4: Update local bridge labels and parser compatibility**
+- [x] **Step 4: Update local bridge labels and parser compatibility**
 
 In `scripts/colab_opencode_localhost.py`, update user-facing prints from OpenCode-only names to terminal names:
 
@@ -163,7 +163,7 @@ for marker in ("COLAB_TERMINAL_RESULT ", "COLAB_OPENCODE_RESULT "):
 raise RuntimeError("Colab terminal setup did not emit COLAB_TERMINAL_RESULT.")
 ```
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run:
 
