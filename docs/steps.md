@@ -1931,3 +1931,15 @@
 - Step name: Task 4 validation passed
 - Action: Ran `uv run pytest -q` and `git diff --check` after the `v0.10.0` docs and metadata update.
 - Result: Full test suite passed with `88 passed, 1 warning`, and whitespace checks passed.
+
+## 2026-06-07T11:51:19+05:30 - Task 4 documentation committed
+
+- Step name: Task 4 documentation committed
+- Action: Ran `git add -A`, confirmed staged status, committed `docs: document Colab terminal wizard`, and pushed `master` to `fork`.
+- Result: Commit `ab34542` is available on `fork/master`.
+
+## 2026-06-07T11:53:51+05:30 - Task 5 release validation completed
+
+- Step name: Task 5 release validation completed
+- Action: Ran `bash -n scripts/launch_colab_drive_terminal.sh`, `python -m py_compile scripts/colab_drive_terminal.py`, `uv run pytest -q`, `git diff --check`, and dry-run wizard launches for `Profile 32` in Drive and explicit temporary modes.
+- Result: Syntax, compile, whitespace, and full tests passed with `88 passed, 1 warning`; Drive dry-run generated `--drive-persistence --require-drive` and `/content/drive/MyDrive/colab-terminal/projects/smoke`; temp dry-run generated `--no-drive-persistence --no-require-drive` and `/content/colab-terminal/projects/smoke`. Live smoke was skipped to avoid disrupting an already-running older local Colab bridge.

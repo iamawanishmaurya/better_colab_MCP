@@ -696,7 +696,7 @@ opencode
 ```
 ```
 
-- [ ] **Step 4: Commit Task 4**
+- [x] **Step 4: Commit Task 4**
 
 Run:
 
@@ -714,7 +714,7 @@ Expected: docs, changelog, version, and lockfile changes are pushed.
 **Files:**
 - Modify: `docs/steps.md`
 
-- [ ] **Step 1: Run all automated checks**
+- [x] **Step 1: Run all automated checks**
 
 Run:
 
@@ -731,7 +731,7 @@ Expected:
 - pytest passes
 - no whitespace errors
 
-- [ ] **Step 2: Run dry-run wizard validation**
+- [x] **Step 2: Run dry-run wizard validation**
 
 Run:
 
@@ -745,7 +745,7 @@ Expected:
 - drive command includes `--drive-persistence --require-drive`
 - temp command includes `--no-drive-persistence --no-require-drive`
 
-- [ ] **Step 3: Run live smoke if authenticated profile is available**
+- [x] **Step 3: Run live smoke if authenticated profile is available**
 
 Run:
 
@@ -761,7 +761,9 @@ Expected:
 - terminal setup opens localhost
 - Drive mount either succeeds or reports the exact Drive authorization blocker
 
-- [ ] **Step 4: Log validation result**
+Result: skipped for this release validation because an older `colab_opencode_localhost.py` bridge was already running on another port, and killing it would risk disrupting an active user session. Dry-run validation confirmed the generated launch commands for both Drive and explicit temporary modes.
+
+- [x] **Step 4: Log validation result**
 
 Append a `docs/steps.md` entry with the exact commands, result, and timestamp.
 
