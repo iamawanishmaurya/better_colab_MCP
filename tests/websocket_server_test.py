@@ -50,6 +50,19 @@ async def test_successful_connection(origin_domain):
 
 
 @pytest.mark.asyncio
+async def test_successful_ipv6_loopback_connection():
+    async with ColabWebSocketServer() as server:
+        client = await websockets.connect(
+            f"ws://[::1]:{server.port}",
+            origin="https://colab.research.google.com",
+            subprotocols=["mcp"],
+            additional_headers={"Authorization": f"Bearer {server.token}"},
+        )
+        assert server.connection_live.is_set()
+        await client.close()
+
+
+@pytest.mark.asyncio
 async def test_disconnect_notifies_read_stream():
     async with ColabWebSocketServer() as server:
         client = await websockets.connect(

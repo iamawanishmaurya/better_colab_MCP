@@ -27,6 +27,7 @@ from colab_opencode_web_terminal import (
     DEFAULT_PORT,
     DEFAULT_REPO,
     DEFAULT_SETUP_TIMEOUT,
+    DEFAULT_TERMINAL_COMMAND,
     DEFAULT_TERMINAL_BACKEND,
     outputs_text,
     result_payload,
@@ -356,6 +357,7 @@ async def setup_opencode(client: Client, args: argparse.Namespace) -> dict:
         require_drive=args.require_drive,
         drive_mount_timeout=args.drive_mount_timeout,
         terminal_backend=args.terminal_backend,
+        terminal_command=args.terminal_command,
         ghosttown_session_mode=args.ghosttown_session_mode,
         ghosttown_tmux_session=args.ghosttown_tmux_session,
     )
@@ -396,6 +398,9 @@ def build_mcp_env(args: argparse.Namespace) -> dict[str, str]:
         "COLAB_MCP_BROWSER_PROFILE": args.browser_profile,
         "COLAB_MCP_BROWSER_HEADLESS": "1" if args.browser_headless else "0",
         "COLAB_MCP_BROWSER_COPY_PROFILE": "1" if args.browser_copy_profile else "0",
+        "COLAB_MCP_BROWSER_REUSE_PROFILE_COPY": "1"
+        if args.browser_reuse_profile_copy
+        else "0",
         "COLAB_MCP_BROWSER_PROFILE_COPY_DIR": args.browser_profile_copy_dir,
         "COLAB_MCP_BROWSER_COOKIE_FILE": args.browser_cookie_file,
         "COLAB_MCP_EDGE_CDP_PORT": str(args.cdp_port),
@@ -430,6 +435,7 @@ async def run(args: argparse.Namespace) -> None:
     print(f"Colab proxy auth cookies: {json.dumps(cookie_summary, sort_keys=True)}", flush=True)
     runner = await start_local_proxy(remote_url, args.local_host, args.local_port, extra_headers)
     print(f"Opencode backend: {setup.get('terminalBackend')}", flush=True)
+    print(f"Terminal command: {setup.get('terminalCommand')}", flush=True)
     if setup.get("terminalBackend") == "ghosttown":
         print(f"Ghost Town session mode: {setup.get('ghosttownSessionMode')}", flush=True)
         if setup.get("ghosttownTmuxSession"):
@@ -440,7 +446,8 @@ async def run(args: argparse.Namespace) -> None:
     print(f"Opencode Colab proxy URL: {remote_url}", flush=True)
     print(f"Localhost URL: {local_url}", flush=True)
     if setup.get("terminalBackend") == "ghosttown":
-        print(f"Ghost Town new Opencode session URL: {local_url}/new", flush=True)
+        label = "Opencode" if setup.get("terminalCommand") == "opencode" else "shell"
+        print(f"Ghost Town new {label} session URL: {local_url}/new", flush=True)
     try:
         smoke = await smoke_localhost(local_url)
     except Exception:
@@ -480,6 +487,11 @@ def parse_args() -> argparse.Namespace:
         default=env_bool("COLAB_MCP_BROWSER_COPY_PROFILE", True),
     )
     parser.add_argument(
+        "--browser-reuse-profile-copy",
+        action=argparse.BooleanOptionalAction,
+        default=env_bool("COLAB_MCP_BROWSER_REUSE_PROFILE_COPY", True),
+    )
+    parser.add_argument(
         "--browser-profile-copy-dir",
         default=os.environ.get("COLAB_MCP_BROWSER_PROFILE_COPY_DIR", "/tmp/colab-mcp-opencode-profile-copy"),
     )
@@ -496,6 +508,12 @@ def parse_args() -> argparse.Namespace:
         "--terminal-backend",
         choices=("ttyd", "ghosttown"),
         default=os.environ.get("COLAB_OPENCODE_TERMINAL_BACKEND", DEFAULT_TERMINAL_BACKEND),
+    )
+    parser.add_argument(
+        "--terminal-command",
+        choices=("opencode", "shell"),
+        default=os.environ.get("COLAB_OPENCODE_TERMINAL_COMMAND", DEFAULT_TERMINAL_COMMAND),
+        help="Command opened by the web terminal. Use 'shell' for a normal Drive-rooted Bash terminal.",
     )
     parser.add_argument(
         "--ghosttown-session-mode",

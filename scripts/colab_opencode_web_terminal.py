@@ -26,6 +26,7 @@ DEFAULT_CWD = "/content"
 DEFAULT_DRIVE_FOLDER = "/content/drive/MyDrive/opencode"
 DEFAULT_NOTEBOOK_NAME = "opencode.ipynb"
 DEFAULT_TERMINAL_BACKEND = "ttyd"
+DEFAULT_TERMINAL_COMMAND = "opencode"
 DEFAULT_GHOSTTOWN_SESSION_MODE = "direct"
 DEFAULT_GHOSTTOWN_TMUX_SESSION = "opencode"
 GHOSTTOWN_PACKAGE = "@seflless/ghosttown"
@@ -91,6 +92,7 @@ def setup_cell_code(
     require_drive: bool = True,
     drive_mount_timeout: int = 180,
     terminal_backend: str = DEFAULT_TERMINAL_BACKEND,
+    terminal_command: str = DEFAULT_TERMINAL_COMMAND,
     ghosttown_session_mode: str = DEFAULT_GHOSTTOWN_SESSION_MODE,
     ghosttown_tmux_session: str = DEFAULT_GHOSTTOWN_TMUX_SESSION,
 ) -> str:
@@ -116,11 +118,14 @@ NOTEBOOK_NAME = {notebook_name!r}
 REQUIRE_DRIVE = {require_drive!r}
 DRIVE_MOUNT_TIMEOUT = {drive_mount_timeout!r}
 TERMINAL_BACKEND = {terminal_backend!r}
+TERMINAL_COMMAND = {terminal_command!r}
 GHOSTTOWN_SESSION_MODE = {ghosttown_session_mode!r}
 GHOSTTOWN_TMUX_SESSION = {ghosttown_tmux_session!r}
 GHOSTTOWN_PACKAGE = {GHOSTTOWN_PACKAGE!r}
 if TERMINAL_BACKEND not in {{"ttyd", "ghosttown"}}:
     raise RuntimeError("Unsupported terminal backend: " + repr(TERMINAL_BACKEND))
+if TERMINAL_COMMAND not in {{"opencode", "shell"}}:
+    raise RuntimeError("Unsupported terminal command: " + repr(TERMINAL_COMMAND))
 if GHOSTTOWN_SESSION_MODE not in {{"direct", "tmux"}}:
     raise RuntimeError("Unsupported Ghost Town session mode: " + repr(GHOSTTOWN_SESSION_MODE))
 if GHOSTTOWN_SESSION_MODE == "tmux":
@@ -243,8 +248,8 @@ def write_recovery_files(drive_root, workdir):
         "set -euo pipefail\\n"
         "export PATH=\\"$HOME/.opencode/bin:$PATH\\"\\n"
         "cd %s\\n"
-        "opencode\\n"
-    ) % shlex.quote(str(workdir))
+        "%s\\n"
+    ) % (shlex.quote(str(workdir)), terminal_exec_line())
     script_path.write_text(script, encoding="utf-8")
     os.chmod(script_path, 0o755)
     if not notebook_path.exists():
@@ -289,12 +294,14 @@ def write_recovery_files(drive_root, workdir):
         "OpenCode config: %s\\n"
         "Recovery notebook: %s\\n"
         "Recovery script: %s\\n"
+        "Default terminal command: %s\\n"
         % (
             str(workdir),
             str(drive_path / "state" / "share" / "opencode"),
             str(drive_path / "state" / "config" / "opencode"),
             str(notebook_path),
             str(script_path),
+            TERMINAL_COMMAND,
         ),
         encoding="utf-8",
     )
@@ -409,7 +416,7 @@ def install_ghosttown():
 def write_ghosttown_shell():
     shell_path = Path("/content/opencode-ghosttown-shell.sh")
     if GHOSTTOWN_SESSION_MODE == "tmux":
-        launch = opencode_launch_command()
+        launch = terminal_launch_command()
         script = (
             "#!/usr/bin/env bash\\n"
             "set -euo pipefail\\n"
@@ -428,16 +435,23 @@ def write_ghosttown_shell():
             shlex.quote(GHOSTTOWN_TMUX_SESSION),
         )
     else:
+        exec_line = terminal_exec_line()
         script = (
             "#!/usr/bin/env bash\\n"
             "set -euo pipefail\\n"
             "export PATH=\\"$HOME/.opencode/bin:$PATH\\"\\n"
             "cd %s\\n"
-            "exec opencode\\n"
-        ) % shlex.quote(WORKDIR)
+            "%s\\n"
+        ) % (shlex.quote(WORKDIR), exec_line)
     shell_path.write_text(script, encoding="utf-8")
     os.chmod(shell_path, 0o755)
     return str(shell_path)
+
+
+def terminal_exec_line():
+    if TERMINAL_COMMAND == "shell":
+        return "exec /bin/bash -l"
+    return "exec opencode"
 
 
 def opencode_launch_command():
@@ -450,10 +464,22 @@ def opencode_launch_command():
     )
 
 
+def terminal_launch_command():
+    if TERMINAL_COMMAND == "shell":
+        return (
+            "export PATH=$HOME/.opencode/bin:$PATH; "
+            + "cd "
+            + shlex.quote(WORKDIR)
+            + "; "
+            + terminal_exec_line()
+        )
+    return opencode_launch_command()
+
+
 def ensure_ghosttown_tmux_session():
     if GHOSTTOWN_SESSION_MODE != "tmux":
         return False
-    launch = opencode_launch_command()
+    launch = terminal_launch_command()
     command = (
         "tmux has-session -t "
         + shlex.quote(GHOSTTOWN_TMUX_SESSION)
@@ -477,11 +503,14 @@ def port_open(port):
 def start_ttyd():
     Path(WORKDIR).mkdir(parents=True, exist_ok=True)
     run(f"fuser -k {{PORT}}/tcp >/dev/null 2>&1 || true", timeout=20, check=False)
-    launch = opencode_launch_command()
+    launch = terminal_launch_command()
+    title = "Colab-Terminal" if TERMINAL_COMMAND == "shell" else "OpenCode-Colab"
     command = (
         "nohup ttyd -W -p "
         + str(PORT)
-        + " -t titleFixed=OpenCode-Colab "
+        + " -t titleFixed="
+        + shlex.quote(title)
+        + " "
         + "/bin/bash -lc "
         + shlex.quote(launch)
         + " > "
@@ -558,6 +587,8 @@ result = {{
     "pid": pid,
     "workdir": WORKDIR,
     "terminalBackend": TERMINAL_BACKEND,
+    "terminalCommand": TERMINAL_COMMAND,
+    "terminalLaunchCommand": terminal_launch_command(),
     "ghosttownSessionMode": GHOSTTOWN_SESSION_MODE if TERMINAL_BACKEND == "ghosttown" else None,
     "ghosttownTmuxSession": GHOSTTOWN_TMUX_SESSION if TERMINAL_BACKEND == "ghosttown" and GHOSTTOWN_SESSION_MODE == "tmux" else None,
     "ghosttownTmuxAttachCommand": ("tmux attach -t " + GHOSTTOWN_TMUX_SESSION) if TERMINAL_BACKEND == "ghosttown" and GHOSTTOWN_SESSION_MODE == "tmux" else None,
@@ -653,6 +684,7 @@ async def run_setup(args: argparse.Namespace) -> None:
             require_drive=args.require_drive,
             drive_mount_timeout=args.drive_mount_timeout,
             terminal_backend=args.terminal_backend,
+            terminal_command=args.terminal_command,
             ghosttown_session_mode=args.ghosttown_session_mode,
             ghosttown_tmux_session=args.ghosttown_tmux_session,
         )
@@ -708,6 +740,12 @@ def parse_args() -> argparse.Namespace:
         choices=("ttyd", "ghosttown"),
         default=os.environ.get("COLAB_OPENCODE_TERMINAL_BACKEND", DEFAULT_TERMINAL_BACKEND),
         help="Terminal web backend to start in Colab.",
+    )
+    parser.add_argument(
+        "--terminal-command",
+        choices=("opencode", "shell"),
+        default=os.environ.get("COLAB_OPENCODE_TERMINAL_COMMAND", DEFAULT_TERMINAL_COMMAND),
+        help="Command opened by the web terminal. Use 'shell' for a normal Drive-rooted Bash terminal.",
     )
     parser.add_argument(
         "--ghosttown-session-mode",

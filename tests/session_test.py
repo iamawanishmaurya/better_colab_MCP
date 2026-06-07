@@ -21,7 +21,9 @@ from unittest.mock import patch, AsyncMock, Mock
 
 
 @pytest.fixture(autouse=True)
-def mock_browser_navigation(monkeypatch):
+def mock_browser_navigation(monkeypatch, request):
+    if request.node.name == "test_navigate_controlled_edge_replaces_stale_colab_target":
+        return Mock()
     mock_navigate = Mock(return_value=False)
     monkeypatch.setattr(session, "_navigate_controlled_edge", mock_navigate)
     return mock_navigate
@@ -236,7 +238,33 @@ class TestControlledEdgeLaunch:
         assert "--remote-debugging-port=9333" in command
         assert "--user-data-dir=/home/astra/.config/google-chrome" in command
         assert "--profile-directory=Default" in command
+        disable_features = next(
+            part for part in command if part.startswith("--disable-features=")
+        )
+        assert "LocalNetworkAccessChecks" in disable_features
+        assert "LocalNetworkAccessChecksWebSockets" in disable_features
         assert command[-1] == "https://example.test"
+
+    def test_controlled_browser_command_can_keep_local_network_checks(
+        self, monkeypatch, tmp_path
+    ):
+        profile = tmp_path / "profile"
+        monkeypatch.setenv(session.BROWSER_COMMAND_ENV, "google-chrome-stable")
+        monkeypatch.setenv(session.BROWSER_USER_DATA_DIR_ENV, str(profile))
+        monkeypatch.setenv(session.BROWSER_DISABLE_LOCAL_NETWORK_CHECKS_ENV, "0")
+        monkeypatch.setattr(
+            session.shutil,
+            "which",
+            lambda name: "/usr/bin/google-chrome-stable"
+            if name == "google-chrome-stable"
+            else None,
+        )
+
+        command = session._controlled_browser_command(
+            "https://example.test", port="9333"
+        )
+
+        assert not any(part.startswith("--disable-features=") for part in command)
 
     def test_controlled_browser_command_supports_headless_cookie_profile(
         self, monkeypatch, tmp_path
@@ -329,6 +357,37 @@ class TestControlledEdgeLaunch:
         assert not (target / "SingletonLock").exists()
         assert not (target / "Default" / "Cache" / "ignored").exists()
 
+    def test_copy_profile_mode_reuses_existing_target_by_default(
+        self, monkeypatch, tmp_path
+    ):
+        source = tmp_path / "source"
+        target = tmp_path / "target"
+        (source / "Default").mkdir(parents=True)
+        (target / "Default").mkdir(parents=True)
+        (source / "Default" / "Preferences").write_text("source", encoding="utf-8")
+        (target / "Default" / "Preferences").write_text("signed-copy", encoding="utf-8")
+        monkeypatch.setenv(session.BROWSER_COMMAND_ENV, "google-chrome-stable")
+        monkeypatch.setenv(session.BROWSER_USER_DATA_DIR_ENV, str(source))
+        monkeypatch.setenv(session.BROWSER_PROFILE_ENV, "Default")
+        monkeypatch.setenv(session.BROWSER_COPY_PROFILE_ENV, "1")
+        monkeypatch.setenv(session.BROWSER_PROFILE_COPY_DIR_ENV, str(target))
+        monkeypatch.setattr(
+            session.shutil,
+            "which",
+            lambda name: "/usr/bin/google-chrome-stable"
+            if name == "google-chrome-stable"
+            else None,
+        )
+
+        command = session._controlled_browser_command(
+            "https://example.test", port="9457"
+        )
+
+        assert f"--user-data-dir={target}" in command
+        assert (target / "Default" / "Preferences").read_text(
+            encoding="utf-8"
+        ) == "signed-copy"
+
     def test_cookie_file_diagnostics_redacts_values(self, monkeypatch, tmp_path):
         cookie_file = tmp_path / "cookies.json"
         cookie_file.write_text(
@@ -365,9 +424,65 @@ class TestControlledEdgeLaunch:
 
         assert session._connection_timeout_seconds() == 240.0
 
+    def test_navigate_controlled_edge_replaces_stale_colab_target(self, monkeypatch):
+        target_url = (
+            "https://colab.research.google.com/notebooks/empty.ipynb"
+            "#mcpProxyToken=test-token&mcpProxyPort=1234"
+        )
+        monkeypatch.setenv(session.EDGE_CDP_PORT_ENV, "9555")
+        monkeypatch.setattr(session, "_ensure_controlled_edge", Mock())
+        cdp_json_calls = []
+
+        def fake_cdp_json(url, *, method="GET"):
+            cdp_json_calls.append((url, method))
+            if "/json/list" in url:
+                return [
+                    {
+                        "type": "page",
+                        "id": "old-target",
+                        "url": "https://colab.research.google.com/notebooks/empty.ipynb",
+                        "webSocketDebuggerUrl": "ws://old-target",
+                    }
+                ]
+            if "/json/new?" in url:
+                return {
+                    "id": "fresh-target",
+                    "url": target_url,
+                    "webSocketDebuggerUrl": "ws://fresh-target",
+                }
+            raise AssertionError(url)
+
+        mock_request = Mock()
+        mock_cdp_call = Mock()
+        mock_connect = Mock(side_effect=[False, True])
+        monkeypatch.setattr(session, "_cdp_json", fake_cdp_json)
+        monkeypatch.setattr(session, "_cdp_request", mock_request)
+        monkeypatch.setattr(session, "_edge_cdp_call", mock_cdp_call)
+        monkeypatch.setattr(session, "_connect_colab_tab", mock_connect)
+
+        connected = session._navigate_controlled_edge(
+            target_url, token="test-token", mcp_port="1234"
+        )
+
+        assert connected is True
+        mock_request.assert_any_call("http://127.0.0.1:9555/json/activate/old-target")
+        mock_request.assert_any_call("http://127.0.0.1:9555/json/close/old-target")
+        assert any("/json/new?" in call[0] for call in cdp_json_calls)
+        assert [call.args[0] for call in mock_connect.call_args_list] == [
+            "ws://old-target",
+            "ws://fresh-target",
+        ]
+
 
 class TestConnectColabTab:
     def test_requires_frontend_server_connection(self, monkeypatch):
+        state = {
+            "ok": True,
+            "connected": True,
+            "serverConnected": False,
+            "token": "test-token",
+            "port": "1234",
+        }
         mock_eval = Mock(
             side_effect=[
                 {
@@ -377,22 +492,12 @@ class TestConnectColabTab:
                         )
                     }
                 },
-                {
-                    "result": {
-                        "value": json.dumps(
-                            {
-                                "ok": True,
-                                "connected": True,
-                                "serverConnected": False,
-                                "token": "test-token",
-                                "port": "1234",
-                            }
-                        )
-                    }
-                },
+                {"result": {"value": json.dumps(state)}},
             ]
         )
         monkeypatch.setattr(session, "_edge_cdp_eval", mock_eval)
+        monkeypatch.setattr(session.time, "monotonic", Mock(side_effect=[0, 0, 0, 999]))
+        monkeypatch.setattr(session.time, "sleep", Mock())
 
         connected = session._connect_colab_tab(
             "ws://devtools.test",
@@ -405,6 +510,12 @@ class TestConnectColabTab:
         connect_expression = mock_eval.call_args_list[1].args[1]
         assert "serverConnected" in connect_expression
         assert "needsReconnect" in connect_expression
+        assert "clickLocalMcpConnectDialog" in connect_expression
+        assert "local Colab MCP server" in connect_expression
+        assert "normalizeLabel" in connect_expression
+        assert "__colabMcpConnectAutomation" in connect_expression
+        assert "^Cancel$" in connect_expression
+        assert "readyState===WebSocket.OPEN" in connect_expression
 
     def test_accepts_frontend_server_connection(self, monkeypatch):
         mock_eval = Mock(
@@ -432,6 +543,7 @@ class TestConnectColabTab:
             ]
         )
         monkeypatch.setattr(session, "_edge_cdp_eval", mock_eval)
+        monkeypatch.setattr(session.time, "monotonic", Mock(side_effect=[0, 0, 0]))
 
         connected = session._connect_colab_tab(
             "ws://devtools.test",
@@ -441,6 +553,138 @@ class TestConnectColabTab:
         )
 
         assert connected is True
+
+    def test_clicks_dialog_button_with_cdp_mouse_events(self, monkeypatch):
+        mock_eval = Mock(
+            side_effect=[
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {"ready": "complete", "hasService": True}
+                        )
+                    }
+                },
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {
+                                "ok": True,
+                                "connected": True,
+                                "serverConnected": False,
+                                "token": "test-token",
+                                "port": "1234",
+                                "dialogClicks": [
+                                    {"x": 100.5, "y": 200.25, "text": "Connect"}
+                                ],
+                            }
+                        )
+                    }
+                },
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {
+                                "ok": True,
+                                "connected": True,
+                                "serverConnected": True,
+                                "token": "test-token",
+                                "port": "1234",
+                            }
+                        )
+                    }
+                },
+            ]
+        )
+        mock_cdp_call = Mock(return_value={"result": {}})
+        monkeypatch.setattr(session, "_edge_cdp_eval", mock_eval)
+        monkeypatch.setattr(session, "_edge_cdp_call", mock_cdp_call)
+        monkeypatch.setattr(session.time, "monotonic", Mock(side_effect=[0, 0, 0, 0]))
+        monkeypatch.setattr(session.time, "sleep", Mock())
+
+        connected = session._connect_colab_tab(
+            "ws://devtools.test",
+            "https://colab.research.google.com/notebooks/empty.ipynb#mcpProxyToken=test-token&mcpProxyPort=1234",
+            "test-token",
+            "1234",
+        )
+
+        assert connected is True
+        assert [call.args[1] for call in mock_cdp_call.call_args_list] == [
+            "Input.dispatchMouseEvent",
+            "Input.dispatchMouseEvent",
+        ]
+        assert mock_cdp_call.call_args_list[0].args[2] == {
+            "type": "mousePressed",
+            "x": 100.5,
+            "y": 200.25,
+            "button": "left",
+            "clickCount": 1,
+        }
+        assert mock_cdp_call.call_args_list[1].args[2]["type"] == "mouseReleased"
+
+    def test_resets_tab_for_stale_already_connected_service(self, monkeypatch):
+        target_url = (
+            "https://colab.research.google.com/notebooks/empty.ipynb"
+            "#mcpProxyToken=test-token&mcpProxyPort=1234"
+        )
+        mock_eval = Mock(
+            side_effect=[
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {"ready": "complete", "hasService": True}
+                        )
+                    }
+                },
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {
+                                "ok": True,
+                                "connected": False,
+                                "serverConnected": False,
+                                "ws": None,
+                                "token": "test-token",
+                                "port": "1234",
+                                "automation": {
+                                    "error": "MCP server already connected"
+                                },
+                            }
+                        )
+                    }
+                },
+                {
+                    "result": {
+                        "value": json.dumps(
+                            {
+                                "ok": True,
+                                "connected": True,
+                                "serverConnected": True,
+                                "token": "test-token",
+                                "port": "1234",
+                            }
+                        )
+                    }
+                },
+            ]
+        )
+        mock_cdp_call = Mock(return_value={"result": {}})
+        monkeypatch.setattr(session, "_edge_cdp_eval", mock_eval)
+        monkeypatch.setattr(session, "_edge_cdp_call", mock_cdp_call)
+        monkeypatch.setattr(session.time, "monotonic", Mock(side_effect=[0, 0, 0, 0]))
+        monkeypatch.setattr(session.time, "sleep", Mock())
+
+        connected = session._connect_colab_tab(
+            "ws://devtools.test", target_url, "test-token", "1234"
+        )
+
+        assert connected is True
+        assert [call.args[1] for call in mock_cdp_call.call_args_list] == [
+            "Page.navigate",
+            "Page.navigate",
+        ]
+        assert mock_cdp_call.call_args_list[0].args[2] == {"url": "about:blank"}
+        assert mock_cdp_call.call_args_list[1].args[2] == {"url": target_url}
 
 
 class TestColabProxyClient:

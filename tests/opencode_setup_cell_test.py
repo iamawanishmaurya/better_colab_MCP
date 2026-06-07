@@ -48,6 +48,25 @@ def test_setup_cell_code_compiles_for_ghosttown_tmux_mode():
     assert "ghosttownTmuxAttachCommand" in code
 
 
+def test_setup_cell_code_compiles_for_drive_rooted_shell_mode():
+    code = setup_cell_code(
+        port=7681,
+        cwd="/content",
+        install_timeout=600,
+        terminal_backend="ghosttown",
+        terminal_command="shell",
+        ghosttown_session_mode="tmux",
+        ghosttown_tmux_session="drive-terminal",
+    )
+
+    compile(code, "<opencode-ghosttown-shell-tmux-setup>", "exec")
+    assert "TERMINAL_COMMAND = 'shell'" in code
+    assert "exec /bin/bash -l" in code
+    assert "terminalCommand" in code
+    assert "terminalLaunchCommand" in code
+    assert "GHOSTTOWN_TMUX_SESSION = 'drive-terminal'" in code
+
+
 def test_setup_cell_code_can_disable_drive_persistence():
     code = setup_cell_code(
         port=7681,

@@ -26,6 +26,7 @@ from colab_opencode_web_terminal import (
     DEFAULT_PORT,
     DEFAULT_REPO,
     DEFAULT_SETUP_TIMEOUT,
+    DEFAULT_TERMINAL_COMMAND,
     DEFAULT_TERMINAL_BACKEND,
     env_bool,
 )
@@ -58,6 +59,7 @@ def write_state(args: argparse.Namespace, **updates) -> None:
         "stateFile": str(args.state_file),
         "bridgeLogFile": str(args.bridge_log_file),
         "terminalBackend": args.terminal_backend,
+        "terminalCommand": args.terminal_command,
         "ghosttownSessionMode": args.ghosttown_session_mode,
         "ghosttownTmuxSession": args.ghosttown_tmux_session,
         "drivePersistence": args.drive_persistence,
@@ -100,6 +102,8 @@ def bridge_command(args: argparse.Namespace) -> list[str]:
         args.cwd,
         "--terminal-backend",
         args.terminal_backend,
+        "--terminal-command",
+        args.terminal_command,
         "--ghosttown-session-mode",
         args.ghosttown_session_mode,
         "--ghosttown-tmux-session",
@@ -119,6 +123,11 @@ def bridge_command(args: argparse.Namespace) -> list[str]:
     ]
     command.append("--browser-headless" if args.browser_headless else "--no-browser-headless")
     command.append("--browser-copy-profile" if args.browser_copy_profile else "--no-browser-copy-profile")
+    command.append(
+        "--browser-reuse-profile-copy"
+        if args.browser_reuse_profile_copy
+        else "--no-browser-reuse-profile-copy"
+    )
     command.append("--drive-persistence" if args.drive_persistence else "--no-drive-persistence")
     command.append("--require-drive" if args.require_drive else "--no-require-drive")
     if args.browser_cookie_file:
@@ -324,6 +333,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--browser-profile", default=os.environ.get("COLAB_MCP_BROWSER_PROFILE", "Default"))
     parser.add_argument("--browser-headless", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--browser-copy-profile", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--browser-reuse-profile-copy", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--browser-profile-copy-dir", default=os.environ.get("COLAB_MCP_BROWSER_PROFILE_COPY_DIR", "/tmp/colab-mcp-opencode-profile-copy"))
     parser.add_argument("--browser-cookie-file", default=os.environ.get("COLAB_MCP_BROWSER_COOKIE_FILE"))
     parser.add_argument("--cdp-port", type=int, default=int(os.environ.get("COLAB_MCP_EDGE_CDP_PORT", "9458")))
@@ -338,6 +348,11 @@ def parse_args() -> argparse.Namespace:
         "--terminal-backend",
         choices=("ttyd", "ghosttown"),
         default=os.environ.get("COLAB_OPENCODE_TERMINAL_BACKEND", DEFAULT_TERMINAL_BACKEND),
+    )
+    parser.add_argument(
+        "--terminal-command",
+        choices=("opencode", "shell"),
+        default=os.environ.get("COLAB_OPENCODE_TERMINAL_COMMAND", DEFAULT_TERMINAL_COMMAND),
     )
     parser.add_argument(
         "--ghosttown-session-mode",

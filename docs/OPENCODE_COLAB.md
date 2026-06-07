@@ -30,6 +30,8 @@ The script:
   bounded curl timeouts.
 - Installs `ttyd` through `apt`, with a GitHub release binary fallback.
 - Starts `ttyd` on Colab port `7681`.
+- Opens Opencode by default, or a normal Bash terminal when
+  `--terminal-command shell` is used.
 - Opens a Colab output window/iframe for the web terminal.
 
 Useful flags:
@@ -40,6 +42,7 @@ uv run python scripts/colab_opencode_web_terminal.py --setup-timeout 1200 --prin
 uv run python scripts/colab_opencode_web_terminal.py --no-auto-click-connect
 uv run python scripts/colab_opencode_web_terminal.py --no-drive-persistence --cwd /content
 uv run python scripts/colab_opencode_web_terminal.py --no-require-drive
+uv run python scripts/colab_opencode_web_terminal.py --terminal-command shell
 uv run python scripts/colab_opencode_web_terminal.py --terminal-backend ghosttown
 uv run python scripts/colab_opencode_web_terminal.py --terminal-backend ghosttown --ghosttown-session-mode tmux
 ```
@@ -47,6 +50,34 @@ uv run python scripts/colab_opencode_web_terminal.py --terminal-backend ghosttow
 Use `--no-require-drive` only for smoke tests or temporary sessions where Drive
 authorization is unavailable. It still attempts to mount Drive, but it falls
 back to the requested runtime directory if Colab refuses or times out.
+
+## Terminal Command Modes
+
+The web terminal can open either Opencode or a normal shell:
+
+```shell
+# Default: open Opencode immediately.
+uv run python scripts/colab_opencode_localhost.py \
+  --terminal-backend ghosttown \
+  --ghosttown-session-mode tmux \
+  --terminal-command opencode
+
+# Plain terminal: open Bash in the Drive-backed project folder.
+uv run python scripts/colab_opencode_localhost.py \
+  --terminal-backend ghosttown \
+  --ghosttown-session-mode tmux \
+  --terminal-command shell
+```
+
+When Drive mounts and `--cwd` is left as `/content`, both modes start in:
+
+```text
+/content/drive/MyDrive/opencode/project
+```
+
+That makes Google Drive the primary project disk for the terminal. Opencode is
+still installed and on `PATH` in shell mode, so you can type `opencode` manually
+from the shell whenever you want the TUI.
 
 ## Ghost Town Backend
 
@@ -63,8 +94,8 @@ uv run python scripts/colab_opencode_web_terminal.py \
 The setup cell installs `@seflless/ghosttown`, writes
 `/content/opencode-ghosttown-shell.sh`, and starts the Ghost Town web server on
 the selected Colab port. Open `/new` on the Ghost Town URL to create a
-web-managed terminal session that launches Opencode in the persistent project
-directory.
+web-managed terminal session that launches either Opencode or Bash in the
+persistent project directory, depending on `--terminal-command`.
 
 To make the Ghost Town browser terminal attach directly to a tmux session in
 Colab, use tmux mode:
@@ -76,10 +107,10 @@ uv run python scripts/colab_opencode_web_terminal.py \
   --ghosttown-tmux-session opencode
 ```
 
-In tmux mode, setup installs `tmux`, creates or reuses the named `opencode`
-session, starts OpenCode inside that session, and makes every Ghost Town `/new`
-terminal attach to it. This is still not SSH; it is Ghost Town's browser PTY
-connected to Colab's kernel port proxy.
+In tmux mode, setup installs `tmux`, creates or reuses the named tmux session,
+starts the selected terminal command inside that session, and makes every Ghost
+Town `/new` terminal attach to it. This is still not SSH; it is Ghost Town's
+browser PTY connected to Colab's kernel port proxy.
 
 For localhost access through the local reverse proxy:
 
@@ -90,8 +121,9 @@ uv run python scripts/colab_opencode_localhost.py \
   --local-port 8765
 ```
 
-When the bridge prints `Ghost Town new Opencode session URL`, open that `/new`
-URL to create a terminal session that starts Opencode.
+When the bridge prints `Ghost Town new Opencode session URL` or
+`Ghost Town new shell session URL`, open that `/new` URL to create the terminal
+session.
 
 For supervised reconnects:
 
@@ -117,6 +149,7 @@ uv run python scripts/colab_opencode_localhost.py \
   --browser-profile Default \
   --browser-copy-profile \
   --browser-profile-copy-dir /tmp/colab-mcp-opencode-profile-copy \
+  --browser-reuse-profile-copy \
   --browser-headless \
   --cdp-port 9458 \
   --local-port 8765
@@ -125,9 +158,16 @@ uv run python scripts/colab_opencode_localhost.py \
 The script:
 
 - Connects Colab MCP through copied-profile headless CDP.
+- Reuses an existing copied profile by default, so a dedicated Colab MCP browser
+  login is not wiped on reconnect. Use `--no-browser-reuse-profile-copy` only
+  when you intentionally want a fresh copy from the source Chrome profile.
+- Starts controlled Chrome with local-network websocket checks disabled for the
+  dedicated MCP profile. This avoids Chrome 148 blocking Colab's HTTPS page from
+  reaching the local MCP websocket. Set
+  `COLAB_MCP_BROWSER_DISABLE_LOCAL_NETWORK_CHECKS=0` to opt out.
 - Connects the Colab runtime.
 - Mounts Drive by default and prepares the persistent Opencode folder.
-- Installs/starts Opencode and the selected web terminal backend on the remote
+- Installs Opencode and starts the selected web terminal backend on the remote
   Colab port.
 - Reads the Colab kernel proxy URL.
 - Starts a local HTTP/WebSocket reverse proxy at `http://127.0.0.1:8765`.
@@ -155,6 +195,7 @@ uv run python scripts/colab_opencode_supervisor.py \
   --browser-profile Default \
   --browser-copy-profile \
   --browser-profile-copy-dir /tmp/colab-mcp-opencode-profile-copy \
+  --browser-reuse-profile-copy \
   --browser-headless \
   --cdp-port 9458 \
   --local-port 8765
@@ -185,6 +226,7 @@ uv run python scripts/colab_opencode_supervisor.py \
   --browser-profile Default \
   --browser-copy-profile \
   --browser-profile-copy-dir /tmp/colab-mcp-opencode-profile-copy \
+  --browser-reuse-profile-copy \
   --browser-headless \
   --cdp-port 9458 \
   --local-port 8765
@@ -208,6 +250,7 @@ Runtime paths:
 - Backend PID file: `/content/opencode-ttyd.pid` or `/content/opencode-ghosttown.pid`
 - Ghost Town OpenCode shell: `/content/opencode-ghosttown-shell.sh`
 - Ghost Town tmux attach command: `tmux attach -t opencode`
+- Terminal command mode: `opencode` or `shell`
 
 Requirements:
 

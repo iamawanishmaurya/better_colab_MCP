@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.9.0 - 2026-06-07
+
+- Added `--terminal-command {opencode,shell}` and `COLAB_OPENCODE_TERMINAL_COMMAND` for the web terminal, localhost bridge, and reconnect supervisor.
+- Added shell mode so Ghost Town or ttyd can open a normal Bash terminal in the Drive-backed project directory while keeping Opencode installed on `PATH`.
+- Documented using `/content/drive/MyDrive/opencode/project` as the primary terminal disk when Google Drive mounts.
+- Added controlled-Chrome launch flags for Chrome 148 local-network websocket checks so Colab's HTTPS page can reach the loopback MCP websocket.
+- Added copied-profile reuse so a dedicated signed Colab MCP browser profile is preserved across reconnects instead of being overwritten.
+- Hardened CDP attach with Material dialog DOM activation, threaded browser attach, stale-service reset, and fresh Colab target replacement.
+
 ## v0.8.1 - 2026-06-07
 
 - Fixed signed-CDP Colab MCP reconnects when Colab's wrapper state says connected but the inner MCP transport is stale or missing.

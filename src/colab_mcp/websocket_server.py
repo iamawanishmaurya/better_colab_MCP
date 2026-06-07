@@ -52,6 +52,7 @@ class ColabWebSocketServer:
         self.connection_live = asyncio.Event()
         self.allowed_origins = [COLAB, COLAB_ALT_DOMAIN]
         self._server: websockets.Server | None = None
+        self._extra_servers: list[websockets.Server] = []
 
         self.read_stream: MemoryObjectReceiveStream[SessionMessage | Exception]
         self._read_stream_writer: MemoryObjectSendStream[SessionMessage | Exception]
@@ -214,6 +215,20 @@ class ColabWebSocketServer:
             process_request=self._validate_authorization,
         )
         self.port = self._server.sockets[0].getsockname()[1]
+        if self.host in {"127.0.0.1", "localhost"}:
+            try:
+                self._extra_servers.append(
+                    await websockets.serve(
+                        self._connection_handler,
+                        host="::1",
+                        port=self.port,
+                        subprotocols=[Subprotocol("mcp")],
+                        origins=self.allowed_origins,
+                        process_request=self._validate_authorization,
+                    )
+                )
+            except OSError as exc:
+                logging.info("Could not bind IPv6 loopback MCP websocket: %s", exc)
         self._write_state_file()
         logging.info(f"Starting WebSocket server on ws://{self.host}:{self.port}")
         return self
@@ -222,7 +237,11 @@ class ColabWebSocketServer:
         logging.info("Closing WebSocket server")
         if self._server:
             self._server.close()
+            for server in self._extra_servers:
+                server.close()
             self.write_stream.close()
             self.read_stream.close()
             await self._server.wait_closed()
+            for server in self._extra_servers:
+                await server.wait_closed()
         self._remove_state_file()

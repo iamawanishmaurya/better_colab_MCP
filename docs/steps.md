@@ -1,5 +1,413 @@
 # Steps
 
+## 2026-06-07T10:00:28+05:30 - v0.9.0 implementation committed
+
+- Step name: v0.9.0 implementation committed
+- Action: Committed the staged terminal-mode, Chrome connection hardening, tests, changelog, and problem/solution documentation with message `feat: add Drive-rooted terminal mode`.
+- Result: Local commit `1375bcc` was created and will be amended to include this required step log entry before tagging and pushing.
+
+## 2026-06-07T09:59:38+05:30 - Full validation passed
+
+- Step name: Full validation passed
+- Action: Ran `uv run pytest -q`, `git diff --check`, and CLI help checks for `--terminal-command`, `--browser-copy-profile`, and `--browser-reuse-profile-copy` on both localhost bridge and supervisor.
+- Result: Full test suite passed with `79 passed, 1 warning`; diff check was clean; both CLI help surfaces expose the new flags.
+
+## 2026-06-07T09:58:52+05:30 - User-facing docs updated for final connection path
+
+- Step name: User-facing docs updated for final connection path
+- Action: Updated `docs/OPENCODE_COLAB.md` and `CHANGELOG.md` with shell terminal mode, copied-profile reuse, Chrome local-network websocket flags, and CDP attach hardening notes.
+- Result: The documented workflow now matches the implemented v0.9.0 terminal and connection reliability behavior.
+
+## 2026-06-07T09:57:53+05:30 - Direct real-profile attempt stopped and logged
+
+- Step name: Direct real-profile attempt stopped and logged
+- Action: Stopped the direct Default-profile live attempt, verified no current CDP or current-run bridge listener remained, and created `docs/problems/2026-06-07-real-default-profile-cdp-not-listening.md`.
+- Result: The direct real Default profile path is documented as unreliable for CDP; copied-profile reuse remains the recommended path.
+
+## 2026-06-07T09:57:05+05:30 - Focused profile-reuse tests passed
+
+- Step name: Focused profile-reuse tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestControlledEdgeLaunch tests/session_test.py::TestCheckSessionProxyToolFn tests/session_test.py::TestConnectColabTab tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/opencode_setup_cell_test.py -q`.
+- Result: Focused validation passed with `23 passed`, including copied-profile reuse.
+
+## 2026-06-07T09:56:03+05:30 - Signed copied profile reuse implemented
+
+- Step name: Signed copied profile reuse implemented
+- Action: Added default reuse for existing copied Chrome profiles, exposed `--browser-reuse-profile-copy` / `--no-browser-reuse-profile-copy`, wired the supervisor, added unit coverage, and documented the fix in `docs/solutions/preserve-signed-copied-profile.md`.
+- Result: Reconnects no longer wipe a controlled copied profile that has already been signed into Colab.
+
+## 2026-06-07T09:52:59+05:30 - Direct signed Default profile bridge launched
+
+- Step name: Direct signed Default profile bridge launched
+- Action: Started `colab-drive-terminal-cdp` with `--browser-user-data-dir /home/astra/.config/google-chrome`, `--browser-profile Default`, and `--no-browser-copy-profile` so the controlled browser uses the real nothumanatall / canbehumanagain profile.
+- Result: The tmux pane is alive; Chrome CDP and the fresh MCP listener had not appeared in the first short poll.
+
+## 2026-06-07T09:51:58+05:30 - Direct Default profile option verified
+
+- Step name: Direct Default profile option verified
+- Action: Read Chrome's profile registry, verified `Default` maps to `nothumanatall` / `canbehumanagain@gmail.com`, checked that the real Default profile was not visibly locked by another non-controlled Chrome process, and confirmed `scripts/colab_opencode_localhost.py` supports `--browser-user-data-dir`, `--browser-profile`, and `--no-browser-copy-profile`.
+- Result: The next live attempt can use the real signed Default profile directly instead of overwriting a copied profile.
+
+## 2026-06-07T09:50:06+05:30 - Runtime login-required problem logged
+
+- Step name: Runtime login-required problem logged
+- Action: Captured the successful MCP browser attach, the subsequent Colab runtime login-required failure, and created `docs/problems/2026-06-07-copied-profile-colab-login-required.md`.
+- Result: The local-network websocket issue is solved for MCP attach; the remaining live blocker is selecting a signed-in Chrome profile for runtime connection.
+
+## 2026-06-07T09:49:15+05:30 - Live bridge launched after Chrome flag restart
+
+- Step name: Live bridge launched after Chrome flag restart
+- Action: Started `colab-drive-terminal-cdp` after stopping the previous controlled Chrome process so the new local-network websocket flags can be applied.
+- Result: The bridge pane is alive and a fresh MCP websocket server is listening on port `34167`; Chrome CDP had not appeared in the first short poll.
+
+## 2026-06-07T09:48:39+05:30 - Controlled Chrome stopped for flag relaunch
+
+- Step name: Controlled Chrome stopped for flag relaunch
+- Action: Stopped the current shell-mode bridge and the copied-profile Chrome process using CDP port `9463`, then verified the current-run MCP and terminal ports were gone.
+- Result: The next live bridge launch will start Chrome fresh and apply the new local-network websocket disable flags.
+
+## 2026-06-07T09:48:09+05:30 - Focused Chrome local-network flag tests passed
+
+- Step name: Focused Chrome local-network flag tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestControlledEdgeLaunch tests/session_test.py::TestCheckSessionProxyToolFn tests/session_test.py::TestConnectColabTab tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/opencode_setup_cell_test.py -q`.
+- Result: Focused validation passed with `22 passed`, including default Chrome local-network feature disable flags and the opt-out path.
+
+## 2026-06-07T09:47:25+05:30 - Chrome local-network websocket flags implemented
+
+- Step name: Chrome local-network websocket flags implemented
+- Action: Added controlled-browser launch flags to disable Chrome local-network websocket checks by default, added an env opt-out, added unit assertions for default and opt-out behavior, and documented the decision in `docs/solutions/chrome-local-network-access-websocket-flags.md`.
+- Result: Fresh controlled Chrome launches should allow Colab's HTTPS page to reach the local MCP websocket listener.
+
+## 2026-06-07T09:46:15+05:30 - Chrome local-network websocket problem logged
+
+- Step name: Chrome local-network websocket problem logged
+- Action: Tested direct browser-created loopback websockets from the Colab page, inspected server handshake logs, scanned the local Chrome binary for Local Network Access feature gates, and created `docs/problems/2026-06-07-chrome-local-network-access-blocks-colab-websocket.md`.
+- Result: The remaining blocker is documented as Chrome 148 local-network websocket blocking before a valid websocket HTTP request reaches the MCP server.
+
+## 2026-06-07T09:40:29+05:30 - Live shell bridge launched with DOM activation fallback
+
+- Step name: Live shell bridge launched with DOM activation fallback
+- Action: Started `colab-drive-terminal-cdp` with the full shell-mode stack plus threaded attach, CDP mouse clicks, stale-service reset, fresh-target replacement, and Material dialog DOM activation.
+- Result: The pane is alive and early setup is running before the local terminal port is exposed.
+
+## 2026-06-07T09:39:59+05:30 - Old-code live bridge stopped
+
+- Step name: Old-code live bridge stopped
+- Action: Killed the running `colab-drive-terminal-cdp` session and its current-run `colab-mcp` child so the next live validation uses the DOM activation fallback.
+- Result: The old-code bridge and its MCP listener are stopped; Chrome CDP remains on `127.0.0.1:9463`.
+
+## 2026-06-07T09:39:34+05:30 - Focused DOM activation tests passed
+
+- Step name: Focused DOM activation tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestControlledEdgeLaunch tests/session_test.py::TestCheckSessionProxyToolFn tests/session_test.py::TestConnectColabTab tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/opencode_setup_cell_test.py -q`.
+- Result: Focused validation passed with `21 passed` after adding the Material dialog DOM activation fallback.
+
+## 2026-06-07T09:39:09+05:30 - Dialog DOM activation fallback implemented
+
+- Step name: Dialog DOM activation fallback implemented
+- Action: Updated `dialogConnectButton()` to activate the Material `Connect` control and its shadow-root button with composed DOM pointer/click events before returning CDP mouse coordinates, and marked the current connect attempt expired when dialog activation does not open a websocket.
+- Result: The helper can recover when CDP coordinate clicks do not affect the fresh Colab dialog and when Colab resolves `connect()` without creating a websocket.
+
+## 2026-06-07T09:35:28+05:30 - Live shell bridge launched with fresh-target fallback
+
+- Step name: Live shell bridge launched with fresh-target fallback
+- Action: Started `colab-drive-terminal-cdp` with shell mode, Ghost Town tmux backend, copied signed Chrome profile, threaded attach, CDP mouse-click dialog handling, stale-service reset, and fresh-target replacement fallback.
+- Result: The pane is alive and early setup is running before the local terminal port is exposed.
+
+## 2026-06-07T09:34:57+05:30 - Stuck fresh-target pre-fix bridge cleaned
+
+- Step name: Stuck fresh-target pre-fix bridge cleaned
+- Action: Killed the stuck `colab-drive-terminal-cdp` tmux session and its orphaned current-run `colab-mcp` child, then checked listening ports.
+- Result: The pre-fix live bridge is stopped and only Chrome CDP remains on `127.0.0.1:9463`.
+
+## 2026-06-07T09:34:33+05:30 - Focused fresh-target fallback tests passed
+
+- Step name: Focused fresh-target fallback tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestControlledEdgeLaunch tests/session_test.py::TestCheckSessionProxyToolFn tests/session_test.py::TestConnectColabTab tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/opencode_setup_cell_test.py -q`.
+- Result: Focused validation passed with `21 passed`, including the fresh-target replacement fallback.
+
+## 2026-06-07T09:33:56+05:30 - Fresh target fallback test fixture fixed
+
+- Step name: Fresh target fallback test fixture fixed
+- Action: Adjusted the `mock_browser_navigation` autouse fixture so it does not replace `_navigate_controlled_edge()` for the fresh-target fallback unit test, and documented the fix in `docs/solutions/fresh-target-fallback-test-fixture-scope.md`.
+- Result: The new test can exercise the real navigation helper while still mocking its CDP dependencies.
+
+## 2026-06-07T09:32:37+05:30 - Fresh target fallback test failure logged
+
+- Step name: Fresh target fallback test failure logged
+- Action: Ran the focused pytest slice and created `docs/problems/2026-06-07-fresh-target-fallback-test-returned-false.md` after `test_navigate_controlled_edge_replaces_stale_colab_target` failed with `assert False is True`.
+- Result: The test/code mismatch is documented before fixing.
+
+## 2026-06-07T09:32:12+05:30 - Fresh target fallback test added
+
+- Step name: Fresh target fallback test added
+- Action: Added a controlled-browser unit test that simulates a failed attach on a reused Colab target, verifies `/json/close/old-target`, opens a fresh target, and succeeds on the fresh target websocket.
+- Result: The distinct stale-tab replacement strategy is covered before the next focused and live validations.
+
+## 2026-06-07T09:31:18+05:30 - Fresh target fallback decision documented and implemented
+
+- Step name: Fresh target fallback decision documented and implemented
+- Action: After the stale `MCP server already connected` error repeated, reviewed CDP target/page/input primitives, documented five recovery alternatives in `docs/solutions/stale-colab-service-fresh-target-replacement.md`, and updated the attach flow to close a stale Colab target and retry in a fresh target.
+- Result: The code now uses a distinct recovery strategy instead of repeating the failed full-reload reset.
+
+## 2026-06-07T09:27:47+05:30 - Clean live shell bridge launched
+
+- Step name: Clean live shell bridge launched
+- Action: Started a fresh `colab-drive-terminal-cdp` tmux session with `--terminal-command shell`, Ghost Town tmux mode, copied signed Chrome profile, CDP port `9463`, local port `8768`, and Colab port `7686`.
+- Result: The tmux pane is alive and early setup is running; no new local terminal port is exposed yet.
+
+## 2026-06-07T09:27:19+05:30 - Stale shell bridge process family cleaned
+
+- Step name: Stale shell bridge process family cleaned
+- Action: Killed the `colab-drive-terminal-cdp` tmux session, verified the child `uv run colab-mcp` process had become orphaned, terminated only that current shell-mode child process family, and checked listening ports.
+- Result: The current shell-mode bridge and its orphaned `colab-mcp` child are stopped; only Chrome CDP remains listening on `127.0.0.1:9463`.
+
+## 2026-06-07T09:26:50+05:30 - Focused stale-service reset tests passed
+
+- Step name: Focused stale-service reset tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestCheckSessionProxyToolFn tests/session_test.py::TestConnectColabTab tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/opencode_setup_cell_test.py -q`.
+- Result: Focused validation passed with `12 passed`, covering threaded browser attach, CDP mouse clicks, one-time stale-service tab reset, dual loopback binding, and terminal setup generation.
+
+## 2026-06-07T09:26:26+05:30 - Stale service reset test added
+
+- Step name: Stale service reset test added
+- Action: Added a `TestConnectColabTab` case that simulates `MCP server already connected` with no websocket, verifies `Page.navigate` to `about:blank`, verifies navigation back to the target URL, and then succeeds.
+- Result: The one-time stale-service recovery path is covered before another focused and live validation run.
+
+## 2026-06-07T09:25:53+05:30 - Stale Colab service tab reset implemented
+
+- Step name: Stale Colab service tab reset implemented
+- Action: Added a one-time `about:blank` then target-url navigation reset inside `_connect_colab_tab()` when Colab reports `MCP server already connected` while no inner websocket exists.
+- Result: The attach helper can clear Colab's stale frontend service singleton without restarting the signed Chrome profile.
+
+## 2026-06-07T09:24:50+05:30 - Stale Colab service problem logged
+
+- Step name: Stale Colab service problem logged
+- Action: Captured the live `MCP server already connected` automation error, null websocket state, aborted handshake log, and created `docs/problems/2026-06-07-colab-service-already-connected-without-websocket.md`.
+- Result: The post-threading blocker is documented as stale Colab frontend service state before attempting a reset strategy.
+
+## 2026-06-07T09:23:47+05:30 - Live bridge restarted with threaded attach
+
+- Step name: Live bridge restarted with threaded attach
+- Action: Replaced the `colab-drive-terminal-cdp` tmux session and launched shell-mode Ghost Town with the threaded browser attach and CDP mouse-click connection helper.
+- Result: The new tmux pane is alive; an orphaned previous `colab-mcp` listener on port `35767` remains visible and needs to be monitored or cleaned if it blocks the fresh run.
+
+## 2026-06-07T09:23:12+05:30 - Focused event-loop fix tests passed
+
+- Step name: Focused event-loop fix tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestCheckSessionProxyToolFn tests/session_test.py::TestConnectColabTab tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/opencode_setup_cell_test.py -q`.
+- Result: Focused validation passed with `11 passed`, including the threaded browser attach path, CDP mouse events, IPv6 loopback binding, and terminal setup-cell generation.
+
+## 2026-06-07T09:22:49+05:30 - Browser attach moved off event loop
+
+- Step name: Browser attach moved off event loop
+- Action: Updated `check_session_proxy_tool_fn()` to run `_navigate_controlled_edge()` through `asyncio.to_thread()` instead of blocking inside the FastMCP asyncio event loop.
+- Result: The browser automation can keep waiting for the inner websocket while the local websocket server remains able to accept and process Chrome's connection.
+
+## 2026-06-07T09:22:02+05:30 - Event-loop blocking problem logged
+
+- Step name: Event-loop blocking problem logged
+- Action: Captured CDP state, socket state, and server logs after the CDP mouse-click automation accepted the dialog, then created `docs/problems/2026-06-07-sync-cdp-connection-blocks-websocket-server.md`.
+- Result: The remaining live failure is documented as a synchronous CDP wait blocking the websocket server's asyncio event loop.
+
+## 2026-06-07T09:20:12+05:30 - Live shell bridge restarted with CDP mouse-click loop
+
+- Step name: Live shell bridge restarted with CDP mouse-click loop
+- Action: Replaced `colab-drive-terminal-cdp` and started a fresh shell-mode Ghost Town bridge using the signed copied Chrome profile, CDP port `9463`, local port `8768`, and Colab port `7686`.
+- Result: The tmux pane is alive; Chrome CDP remains available and the bridge is still in early setup before exposing the terminal port.
+
+## 2026-06-07T09:19:43+05:30 - Focused CDP mouse-click tests passed
+
+- Step name: Focused CDP mouse-click tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestConnectColabTab tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/opencode_setup_cell_test.py -q`.
+- Result: Focused validation passed with `9 passed`, covering the CDP mouse-click connection loop, dual-loopback websocket server, and shell/opencode setup-cell generation.
+
+## 2026-06-07T09:19:14+05:30 - CDP mouse-click tests added
+
+- Step name: CDP mouse-click tests added
+- Action: Updated `tests/session_test.py` to assert normalized dialog detection, persistent connect automation state, strict websocket readiness, and `Input.dispatchMouseEvent` calls for detected dialog buttons.
+- Result: The new connection helper behavior is covered by focused unit tests before another live bridge restart.
+
+## 2026-06-07T09:18:16+05:30 - CDP mouse-click connection loop implemented
+
+- Step name: CDP mouse-click connection loop implemented
+- Action: Refactored `_connect_colab_tab()` to start Colab's connect promise without blocking, detect the normalized Material `Connect` button rectangle, click it through `Input.dispatchMouseEvent`, and poll until the inner websocket is `OPEN`.
+- Result: The helper no longer relies on synthetic DOM clicks against the Material button host and no longer treats Colab's outer `isConnected()` state as sufficient.
+
+## 2026-06-07T09:16:03+05:30 - Opened false timeout problem logged
+
+- Step name: Opened false timeout problem logged
+- Action: Captured the timed-out bridge log and created `docs/problems/2026-06-07-shell-mode-cdp-opened-false-after-dialog-click.md` with the exact `RuntimeError`, reproduction steps, environment, and first hypothesis.
+- Result: The second-stage live failure is documented before another fix attempt.
+
+## 2026-06-07T09:13:15+05:30 - Material dialog activation problem logged
+
+- Step name: Material dialog activation problem logged
+- Action: Inspected the live Colab page through CDP and created `docs/problems/2026-06-07-material-dialog-click-not-activated.md` with the exact hang, websocket state, visible dialog controls, reproduction steps, environment, and first hypothesis.
+- Result: The repeated `Connecting Colab MCP browser session...` hang is now tracked as a Material dialog activation issue rather than another blind retry of the same fix.
+
+## 2026-06-07T09:11:54+05:30 - Shell-mode bridge hang observed after restart
+
+- Step name: Shell-mode bridge hang observed after restart
+- Action: Polled `/tmp/colab-mcp-shell-mode-live.log`, listening ports, and tmux pane state after restarting the shell-mode bridge.
+- Result: The tmux pane remains alive, but the log is still stuck at `Connecting Colab MCP browser session...`; ports `8768` and `7686` are not listening yet.
+
+## 2026-06-07T09:11:15+05:30 - Fresh shell-mode bridge restarted
+
+- Step name: Fresh shell-mode bridge restarted
+- Action: Replaced the stale `colab-drive-terminal-cdp` tmux session and launched `scripts/colab_opencode_localhost.py` with `--terminal-command shell`, Ghost Town tmux mode, visible copied Chrome profile, CDP port `9463`, local port `8768`, and Colab port `7686`.
+- Result: The tmux pane is alive (`pane_dead=0`); Chrome CDP is listening on `127.0.0.1:9463` and the terminal bridge is still in setup before binding `8768` or `7686`.
+
+## 2026-06-07T09:10:37+05:30 - Resume state verified
+
+- Step name: Resume state verified
+- Action: Checked git status, tmux sessions, listening ports, and the current timestamp after resuming the terminal-mode work.
+- Result: The v0.9.0 terminal-mode changes are still uncommitted, `colab-drive-terminal-cdp` exists, and only Chrome CDP is listening on `127.0.0.1:9463`; the terminal bridge is not currently bound to `8768` or `7686`.
+
+## 2026-06-07T09:08:49+05:30 - Role-less dialog fallback focused tests passed
+
+- Step name: Role-less dialog fallback focused tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestConnectColabTab tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/opencode_setup_cell_test.py -q`.
+- Result: Focused tests passed with `8 passed` after adding the role-less `Cancel` + `Connect` dialog fallback.
+
+## 2026-06-07T09:08:18+05:30 - Role-less Colab MCP dialog fallback implemented
+
+- Step name: Role-less Colab MCP dialog fallback implemented
+- Action: Broadened `clickLocalMcpConnectDialog()` to click a visible `Connect` button when a matching `Cancel` button is present, even if Colab does not expose a role-based dialog wrapper.
+- Result: The CDP approval helper can handle the observed Colab UI state where `Cancel` and `Connect` are visible but no `role=dialog` element is exposed to the selector.
+
+## 2026-06-07T09:05:02+05:30 - Final shell-mode bridge launch started
+
+- Step name: Final shell-mode bridge launch started
+- Action: Stopped the pre-readiness-check shell bridge processes and started a fresh `colab-drive-terminal-cdp` tmux session with `--terminal-command shell`.
+- Result: The new pane is alive and should use the dual-loopback bind, dialog-click path, and `WebSocket.OPEN` readiness check.
+
+## 2026-06-07T09:04:50+05:30 - WebSocket readiness focused tests passed
+
+- Step name: WebSocket readiness focused tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestConnectColabTab tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/opencode_setup_cell_test.py -q`.
+- Result: Focused tests passed with `8 passed`, covering WebSocket OPEN readiness, IPv6 loopback binding, dialog-click expression, and shell-mode setup generation.
+
+## 2026-06-07T09:04:18+05:30 - WebSocket OPEN readiness check implemented
+
+- Step name: WebSocket OPEN readiness check implemented
+- Action: Updated `_connect_colab_tab()` so `serverConnected()` requires the Colab frontend transport websocket to have `readyState === WebSocket.OPEN`, and updated the focused test assertion.
+- Result: A pending `WebSocket` object in `CONNECTING` state no longer causes the attach helper to skip dialog acceptance or reconnect logic.
+
+## 2026-06-07T09:01:36+05:30 - Shell-mode bridge relaunched after dead-session cleanup
+
+- Step name: Shell-mode bridge relaunched after dead-session cleanup
+- Action: Killed the dead `colab-drive-terminal-cdp` tmux session and started a fresh shell-mode bridge with the dual-loopback websocket fix.
+- Result: The new tmux pane is alive and writing to `/tmp/colab-mcp-shell-mode-live.log`.
+
+## 2026-06-07T09:01:07+05:30 - Dead tmux duplicate-session problem logged
+
+- Step name: Dead tmux duplicate-session problem logged
+- Action: Attempted to relaunch `colab-drive-terminal-cdp` after the old pane had died.
+- Result: tmux returned `duplicate session: colab-drive-terminal-cdp`; created `docs/problems/2026-06-07-dead-tmux-session-duplicate-name.md` and `docs/solutions/dead-tmux-session-duplicate-name.md`.
+
+## 2026-06-07T09:00:46+05:30 - Dual-loopback focused tests passed
+
+- Step name: Dual-loopback focused tests passed
+- Action: Ran `uv run pytest tests/websocket_server_test.py::test_successful_ipv6_loopback_connection tests/session_test.py::TestConnectColabTab tests/opencode_setup_cell_test.py -q` and inspected the dead pre-fix live shell bridge log.
+- Result: Focused tests passed with `8 passed`; the dead live pane contained the old `Colab MCP did not connect` timeout from the server process started before the dual-loopback bind patch.
+
+## 2026-06-07T08:59:31+05:30 - Dual loopback websocket bind implemented
+
+- Step name: Dual loopback websocket bind implemented
+- Action: Inspected Colab's frontend transport through CDP, found `ws://localhost:<port>` stuck at `readyState=0` while the server only listened on `127.0.0.1`, then updated `ColabWebSocketServer` to also bind `::1` on the same selected port.
+- Result: Added `docs/problems/2026-06-07-localhost-websocket-ipv6-not-bound.md`, `docs/solutions/localhost-websocket-dual-loopback-bind.md`, and a regression test for IPv6 loopback websocket connections.
+
+## 2026-06-07T08:55:03+05:30 - Patched shell-mode bridge launched
+
+- Step name: Patched shell-mode bridge launched
+- Action: Restarted tmux session `colab-drive-terminal-cdp` with `--terminal-command shell`, Ghost Town tmux mode, local port `8768`, Colab port `7686`, and the patched CDP dialog-click attach path.
+- Result: The tmux pane is alive and logging to `/tmp/colab-mcp-shell-mode-live.log`.
+
+## 2026-06-07T08:54:43+05:30 - Pre-patch shell bridge stopped
+
+- Step name: Pre-patch shell bridge stopped
+- Action: Killed tmux session `colab-drive-terminal-cdp` and the pre-patch shell bridge processes, then checked listeners.
+- Result: Local ports `8768` and `8770` are free; Chrome CDP remains listening on `127.0.0.1:9463`.
+
+## 2026-06-07T08:55:13+05:30 - Focused dialog and shell-mode tests passed
+
+- Step name: Focused dialog and shell-mode tests passed
+- Action: Ran `uv run pytest tests/session_test.py::TestConnectColabTab tests/opencode_setup_cell_test.py -q`.
+- Result: Focused tests passed with `7 passed`, covering the CDP transport checks, local MCP dialog-click expression, and shell-mode generated setup cell.
+
+## 2026-06-07T08:54:42+05:30 - CDP local MCP dialog click implemented
+
+- Step name: CDP local MCP dialog click implemented
+- Action: Updated `_connect_colab_tab()` to find and click Colab's local MCP approval dialog through CDP, then verify the inner frontend MCP server transport; updated the focused session test and added `docs/solutions/shell-mode-cdp-connect-dialog-click.md`.
+- Result: The repeated `Connecting Colab MCP browser session...` live-connect failure now has an implemented dialog-acceptance path instead of requiring a manual click.
+
+## 2026-06-07T08:52:39+05:30 - Shell-mode CDP approval dialog problem logged
+
+- Step name: Shell-mode CDP approval dialog problem logged
+- Action: Inspected the signed Colab page through CDP after the shell-mode bridge stayed at `Connecting Colab MCP browser session...`.
+- Result: The page had the correct token/port and signed-in account, but local MCP was disconnected and the approval dialog remained open with `CancelConnect`; created `docs/problems/2026-06-07-shell-mode-cdp-connect-dialog-not-accepted.md`.
+
+## 2026-06-07T08:50:13+05:30 - Persistent shell-mode bridge launched
+
+- Step name: Persistent shell-mode bridge launched
+- Action: Started tmux session `colab-drive-terminal-cdp` running `scripts/colab_opencode_localhost.py` with `--terminal-command shell`, Ghost Town tmux mode, local port `8768`, Colab port `7686`, CDP port `9463`, and tmux session `drive-terminal`.
+- Result: The shell-mode bridge is running and logging to `/tmp/colab-mcp-shell-mode-live.log` and `/tmp/colab-mcp-shell-mode-live-mcp.log`.
+
+## 2026-06-07T08:49:48+05:30 - Existing bridge freed for shell-mode validation
+
+- Step name: Existing bridge freed for shell-mode validation
+- Action: Stopped the blocked one-shot shell smoke processes and killed tmux session `colab-opencode-ghosttown-cdp-fixed`.
+- Result: Local ports `8768` and `8770` are free; Chrome CDP remains available on `127.0.0.1:9463`.
+
+## 2026-06-07T08:48:53+05:30 - Shell-mode smoke connection conflict logged
+
+- Step name: Shell-mode smoke connection conflict logged
+- Action: Started a one-shot shell-mode smoke on local port `8770` while the existing Opencode bridge was still active on `8768`; inspected logs, listeners, and `/tmp/colab-mcp-current.json`.
+- Result: The new smoke stayed at `Connecting Colab MCP browser session...`; created `docs/problems/2026-06-07-shell-smoke-mcp-connection-held-by-existing-bridge.md` before changing the live validation strategy.
+
+## 2026-06-07T08:44:36+05:30 - Full test suite passed for terminal command mode
+
+- Step name: Full test suite passed for terminal command mode
+- Action: Ran `uv run pytest -q`.
+- Result: Full suite passed with `73 passed, 1 warning`; the warning is the existing aiohttp `NotAppKeyWarning` in the localhost proxy test.
+
+## 2026-06-07T08:44:09+05:30 - Terminal command focused checks passed
+
+- Step name: Terminal command focused checks passed
+- Action: Ran `uv run pytest tests/opencode_setup_cell_test.py -q` and checked `--help` output for `scripts/colab_opencode_localhost.py`, `scripts/colab_opencode_supervisor.py`, and `scripts/colab_opencode_web_terminal.py`.
+- Result: Setup-cell tests passed with `5 passed`; all three CLIs list `--terminal-command {opencode,shell}`.
+
+## 2026-06-07T08:43:35+05:30 - uv lock updated for v0.9.0
+
+- Step name: uv lock updated for v0.9.0
+- Action: Ran `uv lock`.
+- Result: `uv.lock` now records `colab-mcp v0.9.0`.
+
+## 2026-06-07T08:43:02+05:30 - Terminal command docs and v0.9.0 metadata updated
+
+- Step name: Terminal command docs and v0.9.0 metadata updated
+- Action: Updated `docs/OPENCODE_COLAB.md`, added `CHANGELOG.md` entry `v0.9.0`, and bumped `pyproject.toml` from `0.8.1` to `0.9.0`.
+- Result: Documentation now shows `--terminal-command shell` for a normal Drive-rooted Bash terminal and explains that `/content/drive/MyDrive/opencode/project` becomes the primary project disk when Drive mounts.
+
+## 2026-06-07T08:41:12+05:30 - Drive-rooted terminal command mode implemented
+
+- Step name: Drive-rooted terminal command mode implemented
+- Action: Added `--terminal-command {opencode,shell}` / `COLAB_OPENCODE_TERMINAL_COMMAND` plumbing to the generated setup cell, localhost bridge, browser-window launcher, and reconnect supervisor.
+- Result: `opencode` remains the default; `shell` opens a normal Bash login shell in the same Drive-backed workdir when Drive mounts, while Opencode remains installed and available on `PATH`.
+
+## 2026-06-07T08:38:22+05:30 - Ripgrep option-pattern problem logged
+
+- Step name: Ripgrep option-pattern problem logged
+- Action: Logged `docs/problems/2026-06-07-rg-pattern-parsed-as-flag.md` and `docs/solutions/rg-pattern-parsed-as-flag.md` after a search pattern beginning with `--ghosttown-session-mode` was parsed as an `rg` flag.
+- Result: The documented fix is to use `rg -- <pattern>` for option-looking patterns.
+
+## 2026-06-07T08:37:10+05:30 - Terminal command mode implementation scoped
+
+- Step name: Terminal command mode implementation scoped
+- Action: Read `scripts/colab_opencode_web_terminal.py`, `scripts/colab_opencode_localhost.py`, tests, changelog, and `docs/OPENCODE_COLAB.md` to locate the generated setup cell, Ghost Town shell wrapper, tmux launch command, and Drive-backed workdir behavior.
+- Result: The setup cell already uses `/content/drive/MyDrive/opencode/project` as the default workdir after Drive mounts; the missing feature is a CLI/env option to launch a normal shell instead of always executing `opencode`.
+
 ## 2026-06-07T08:29:29+05:30 - v0.8.1 patch commit created
 
 - Step name: v0.8.1 patch commit created

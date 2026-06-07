@@ -59,8 +59,12 @@ BROWSER_USER_DATA_DIR_ENV = "COLAB_MCP_BROWSER_USER_DATA_DIR"
 BROWSER_HEADLESS_ENV = "COLAB_MCP_BROWSER_HEADLESS"
 BROWSER_COOKIE_FILE_ENV = "COLAB_MCP_BROWSER_COOKIE_FILE"
 BROWSER_COPY_PROFILE_ENV = "COLAB_MCP_BROWSER_COPY_PROFILE"
+BROWSER_REUSE_PROFILE_COPY_ENV = "COLAB_MCP_BROWSER_REUSE_PROFILE_COPY"
 BROWSER_PROFILE_COPY_DIR_ENV = "COLAB_MCP_BROWSER_PROFILE_COPY_DIR"
 BROWSER_PRINT_CONNECTION_URL_ENV = "COLAB_MCP_PRINT_CONNECTION_URL"
+BROWSER_DISABLE_LOCAL_NETWORK_CHECKS_ENV = (
+    "COLAB_MCP_BROWSER_DISABLE_LOCAL_NETWORK_CHECKS"
+)
 EDGE_CDP_PORT_ENV = "COLAB_MCP_EDGE_CDP_PORT"
 EDGE_CDP_URL_CONTAINS_ENV = "COLAB_MCP_EDGE_URL_CONTAINS"
 EDGE_PROFILE_ENV = "COLAB_MCP_EDGE_PROFILE"
@@ -77,6 +81,11 @@ CHROME_COMMAND_CANDIDATES = (
     "chrome",
     "chromium",
     "chromium-browser",
+)
+LOCAL_NETWORK_ACCESS_DISABLE_FEATURES = (
+    "LocalNetworkAccessChecks",
+    "LocalNetworkAccessChecksWebSockets",
+    "BlockInsecurePrivateNetworkRequests",
 )
 _TERMINAL_COMMAND_LOCK: asyncio.Lock | None = None
 
@@ -2928,7 +2937,9 @@ async def check_session_proxy_tool_fn(ctx: Context = CurrentContext()) -> bool:
     if fe_connected:
         return True
     url = f"{COLAB}{SCRATCH_PATH}#mcpProxyToken={token}&mcpProxyPort={port}"
-    return _navigate_controlled_edge(url, token=token, mcp_port=port)
+    return await asyncio.to_thread(
+        _navigate_controlled_edge, url, token=token, mcp_port=port
+    )
 
 
 def _cdp_json(url: str, *, method: str = "GET"):
@@ -3034,6 +3045,10 @@ def _browser_copy_profile() -> bool:
     return _env_bool(BROWSER_COPY_PROFILE_ENV)
 
 
+def _browser_reuse_profile_copy() -> bool:
+    return _env_bool(BROWSER_REUSE_PROFILE_COPY_ENV, True)
+
+
 def _browser_source_user_data_dir() -> Path:
     configured = os.environ.get(BROWSER_USER_DATA_DIR_ENV)
     if configured:
@@ -3101,6 +3116,17 @@ def _copy_browser_profile(source: Path, target: Path, profile_directory: str | N
         raise FileNotFoundError(f"Chrome user data dir does not exist: {source}")
     if source.resolve() == target.resolve():
         raise ValueError("Profile copy target must be different from the source user data dir.")
+    selected_profile = profile_directory or "Default"
+    if _browser_reuse_profile_copy() and (target / selected_profile).exists():
+        return {
+            "source": str(source),
+            "target": str(target),
+            "profileDirectory": selected_profile,
+            "filesCopied": 0,
+            "reused": True,
+            "failures": [],
+            "truncatedFailures": 0,
+        }
     if target.exists():
         shutil.rmtree(target)
     target.mkdir(parents=True, exist_ok=True)
@@ -3113,7 +3139,6 @@ def _copy_browser_profile(source: Path, target: Path, profile_directory: str | N
         if root_file.exists():
             copied += _copy_path_best_effort(root_file, target / file_name, failures)
 
-    selected_profile = profile_directory or "Default"
     profile_source = source / selected_profile
     if profile_source.exists():
         copied += _copy_path_best_effort(profile_source, target / selected_profile, failures)
@@ -3130,6 +3155,7 @@ def _copy_browser_profile(source: Path, target: Path, profile_directory: str | N
         "target": str(target),
         "profileDirectory": selected_profile,
         "filesCopied": copied,
+        "reused": False,
         "failures": failures[:20],
         "truncatedFailures": max(0, len(failures) - 20),
     }
@@ -3157,6 +3183,10 @@ def _browser_cookie_file() -> Path | None:
 
 def _browser_headless() -> bool:
     return _env_bool(BROWSER_HEADLESS_ENV)
+
+
+def _browser_disable_local_network_checks() -> bool:
+    return _env_bool(BROWSER_DISABLE_LOCAL_NETWORK_CHECKS_ENV, True)
 
 
 def _load_browser_cookies() -> list[dict]:
@@ -3298,6 +3328,9 @@ def _browser_diagnostics() -> dict:
         "headless": _browser_headless(),
         "copyProfile": {
             "enabled": _browser_copy_profile(),
+            "reuseExisting": _browser_reuse_profile_copy()
+            if _browser_copy_profile()
+            else None,
             "sourceUserDataDir": str(_browser_source_user_data_dir())
             if _browser_copy_profile()
             else None,
@@ -3311,6 +3344,7 @@ def _browser_diagnostics() -> dict:
             EDGE_CDP_URL_CONTAINS_ENV, "colab.research.google.com"
         ),
         "connectionTimeoutSeconds": _connection_timeout_seconds(),
+        "disableLocalNetworkChecks": _browser_disable_local_network_checks(),
         "printConnectionUrl": _env_bool(BROWSER_PRINT_CONNECTION_URL_ENV),
         "compatibilityEnv": {
             "edgePath": os.environ.get(EDGE_PATH_ENV),
@@ -3329,6 +3363,11 @@ def _controlled_browser_command(url: str, *, port: str) -> list[str]:
         "--no-first-run",
         "--new-window",
     ]
+    if _browser_disable_local_network_checks():
+        command.append(
+            "--disable-features="
+            + ",".join(LOCAL_NETWORK_ACCESS_DISABLE_FEATURES)
+        )
     if _browser_headless():
         command.extend(
             [
@@ -4511,8 +4550,26 @@ def _navigate_controlled_edge(
             _apply_browser_cookies(target["webSocketDebuggerUrl"])
         _edge_cdp_call(target["webSocketDebuggerUrl"], "Page.navigate", {"url": url})
         if token is not None and mcp_port is not None:
-            return _connect_colab_tab(
+            if _connect_colab_tab(
                 target["webSocketDebuggerUrl"], url, str(token), str(mcp_port)
+            ):
+                return True
+            with contextlib.suppress(Exception):
+                _cdp_request(f"http://127.0.0.1:{port}/json/close/{target['id']}")
+            initial_url = "about:blank" if cookie_file is not None else url
+            encoded_url = urllib.parse.quote(initial_url, safe="")
+            fresh_target = _cdp_json(
+                f"http://127.0.0.1:{port}/json/new?{encoded_url}", method="PUT"
+            )
+            if "webSocketDebuggerUrl" not in fresh_target:
+                return False
+            if cookie_file is not None:
+                _apply_browser_cookies(fresh_target["webSocketDebuggerUrl"])
+                _edge_cdp_call(
+                    fresh_target["webSocketDebuggerUrl"], "Page.navigate", {"url": url}
+                )
+            return _connect_colab_tab(
+                fresh_target["webSocketDebuggerUrl"], url, str(token), str(mcp_port)
             )
         return True
     except Exception:
@@ -4556,49 +4613,157 @@ def _connect_colab_tab(
         f"const targetToken={target_token};"
         f"const targetPort={target_port};"
         f"const targetUrl={target_url};"
+        "const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));"
+        "const automation=window.__colabMcpConnectAutomation=window.__colabMcpConnectAutomation||{};"
+        "function allDeep(root=document){"
+        "const out=[];"
+        "const visit=node=>{"
+        "if(!node)return;"
+        "if(node.nodeType===1){out.push(node);if(node.shadowRoot)visit(node.shadowRoot);}"
+        "const children=node.children||[];"
+        "for(const child of children)visit(child);"
+        "};"
+        "visit(root);"
+        "return out;"
+        "}"
+        "function visible(el){"
+        "const rect=el.getBoundingClientRect?.();"
+        "const style=getComputedStyle(el);"
+        "return !!rect&&rect.width>0&&rect.height>0&&style.visibility!=='hidden'&&style.display!=='none';"
+        "}"
+        "function label(el){return ((el.getAttribute?.('aria-label')||'')+' '+(el.innerText||'')+' '+(el.textContent||'')).replace(/\\s+/g,' ').trim();}"
+        "function normalizeLabel(text){return text.replace(/\\b([\\w-]+)\\s+\\1\\b/gi,'$1').replace(/\\s+/g,' ').trim();}"
+        "function interactive(el){return /^(BUTTON|MD-TEXT-BUTTON|MD-FILLED-BUTTON|MD-FILLED-TONAL-BUTTON)$/i.test(el.tagName)||el.getAttribute?.('role')==='button';}"
+        "function activateElement(el){"
+        "const targets=[el.shadowRoot?.querySelector('button,[role=button]'),el].filter(Boolean);"
+        "for(const target of targets){"
+        "target.focus?.();"
+        "for(const type of ['pointerover','mouseover','pointerdown','mousedown','pointerup','mouseup','click'])target.dispatchEvent(new MouseEvent(type,{bubbles:true,cancelable:true,composed:true,view:window}));"
+        "target.click?.();"
+        "}"
+        "return targets.map(target=>target.tagName);"
+        "}"
+        "function dialogConnectButton(){"
+        "const dialog=allDeep().filter(el=>visible(el)&&['dialog','alertdialog'].includes(el.getAttribute?.('role')||'')).find(el=>/local Colab MCP server/i.test(label(el)));"
+        "const scope=dialog?allDeep(dialog):allDeep();"
+        "const cancel=allDeep().filter(el=>visible(el)&&interactive(el)).find(el=>/^Cancel$/i.test(normalizeLabel(label(el))));"
+        "const button=scope.filter(el=>visible(el)&&interactive(el)).find(el=>/^Connect$/i.test(normalizeLabel(label(el))));"
+        "if(!button||(!dialog&&!cancel))return null;"
+        "button.scrollIntoView?.({block:'center',inline:'center'});"
+        "const rect=button.getBoundingClientRect();"
+        "return {x:rect.x+rect.width/2,y:rect.y+rect.height/2,width:rect.width,height:rect.height,tag:button.tagName,role:button.getAttribute?.('role')||null,text:label(button).slice(0,80),normalizedText:normalizeLabel(label(button)).slice(0,80),domActivated:activateElement(button)};"
+        "}"
+        "async function clickLocalMcpConnectDialog(){"
+        "const clicked=[];"
+        "for(let i=0;i<8;i++){"
+        "if(serverConnected())break;"
+        "const button=dialogConnectButton();"
+        "if(button){clicked.push(button);break;}"
+        "await sleep(500);"
+        "}"
+        "return clicked;"
+        "}"
         "function serviceConnected(){try{return !!svc.isConnected?.();}catch(e){return false;}}"
         "function serverConnected(){"
-        "const outer=svc.colabMcpServer;"
-        "try{if(outer?.isConnected?.())return true;}catch(e){}"
-        "const inner=outer?.server;"
-        "return !!inner?._transport;"
+        "const ws=svc.colabMcpServer?.server?._transport?.ws;"
+        "return !!ws&&ws.readyState===WebSocket.OPEN;"
         "}"
         "const before={connected:serviceConnected(),serverConnected:serverConnected(),token:sessionStorage.getItem('mcp_proxy_token'),port:sessionStorage.getItem('mcp_proxy_port'),href:location.href};"
         "const mismatch=before.token!==targetToken||before.port!==targetPort||!location.hash.includes(targetToken)||!location.hash.includes(targetPort);"
         "const needsReconnect=mismatch||!before.serverConnected;"
-        "if(needsReconnect&&svc.disconnect){try{await svc.disconnect();}catch(e){}}"
         "sessionStorage.setItem('mcp_proxy_token',targetToken);"
         "sessionStorage.setItem('mcp_proxy_port',targetPort);"
         "history.replaceState(null,'',targetUrl);"
         "let alreadyConnected=false;"
-        "if(!serverConnected()){"
-        "try{await Promise.race([svc.connect(),new Promise((_,reject)=>setTimeout(()=>reject(new Error('localColabMcpService.connect timed out')),20000))]);}"
-        "catch(e){"
-        "const msg=String(e?.message||e||'');"
-        "if(msg.includes('MCP server already connected')&&serverConnected()){alreadyConnected=true;}"
-        "else{throw e;}"
+        "let disconnectError=null;"
+        "const attemptExpired=!automation.startedAt||(Date.now()-automation.startedAt)>25000;"
+        "const attemptForDifferentTarget=automation.token!==targetToken||automation.port!==targetPort;"
+        "if(needsReconnect&&(attemptExpired||attemptForDifferentTarget||automation.done)){"
+        "if(svc.disconnect){try{await svc.disconnect();}catch(e){disconnectError=String(e?.message||e||'');}}"
+        "automation.token=targetToken;"
+        "automation.port=targetPort;"
+        "automation.startedAt=Date.now();"
+        "automation.done=false;"
+        "automation.resolved=false;"
+        "automation.error=null;"
+        "try{"
+        "const promise=svc.connect();"
+        "automation.promise=promise;"
+        "Promise.resolve(promise).then(()=>{automation.done=true;automation.resolved=true;}).catch(e=>{automation.done=true;automation.error=String(e?.message||e||'');});"
         "}"
-        "}else{alreadyConnected=true;}"
-        "return JSON.stringify({ok:true,before,mismatch,needsReconnect,alreadyConnected,connected:serviceConnected(),serverConnected:serverConnected(),token:sessionStorage.getItem('mcp_proxy_token'),port:sessionStorage.getItem('mcp_proxy_port'),href:location.href});"
+        "catch(e){automation.done=true;automation.error=String(e?.message||e||'');}"
+        "await sleep(500);"
+        "}else if(!needsReconnect){alreadyConnected=true;}"
+        "const dialogClicks=await clickLocalMcpConnectDialog();"
+        "if(dialogClicks.length&&!serverConnected())automation.startedAt=0;"
+        "const ws=svc.colabMcpServer?.server?._transport?.ws;"
+        "return JSON.stringify({ok:true,before,mismatch,needsReconnect,alreadyConnected,disconnectError,dialogClicks,connected:serviceConnected(),serverConnected:serverConnected(),ws:ws?{readyState:ws.readyState,url:ws.url,protocol:ws.protocol}:null,automation:{startedAt:automation.startedAt||null,done:!!automation.done,resolved:!!automation.resolved,error:automation.error||null,token:automation.token||null,port:automation.port||null},token:sessionStorage.getItem('mcp_proxy_token'),port:sessionStorage.getItem('mcp_proxy_port'),href:location.href});"
         "})()"
     )
-    evaluation = _edge_cdp_eval(websocket_url, expression, await_promise=True)
-    if "exceptionDetails" in evaluation:
-        return False
-    value = evaluation.get("result", {}).get("value")
-    if not isinstance(value, str):
-        return False
+    reset_attempted = False
+    while time.monotonic() < deadline:
+        evaluation = _edge_cdp_eval(websocket_url, expression, await_promise=True)
+        if "exceptionDetails" in evaluation:
+            time.sleep(1)
+            continue
+        value = evaluation.get("result", {}).get("value")
+        if not isinstance(value, str):
+            time.sleep(1)
+            continue
+        try:
+            connected = json.loads(value)
+        except json.JSONDecodeError:
+            time.sleep(1)
+            continue
+        automation = connected.get("automation") or {}
+        stale_service = (
+            automation.get("error") == "MCP server already connected"
+            and not connected.get("serverConnected")
+            and not connected.get("ws")
+        )
+        if stale_service:
+            if reset_attempted:
+                return False
+            reset_attempted = True
+            _edge_cdp_call(websocket_url, "Page.navigate", {"url": "about:blank"})
+            time.sleep(1)
+            _edge_cdp_call(websocket_url, "Page.navigate", {"url": url})
+            time.sleep(3)
+            continue
+        if (
+            connected.get("ok")
+            and connected.get("connected")
+            and connected.get("serverConnected")
+            and connected.get("token") == token
+            and connected.get("port") == mcp_port
+        ):
+            return True
+        for button in connected.get("dialogClicks") or []:
+            if _dispatch_cdp_mouse_click(websocket_url, button):
+                break
+        time.sleep(1)
+    return False
+
+
+def _dispatch_cdp_mouse_click(websocket_url: str, button: dict) -> bool:
     try:
-        connected = json.loads(value)
-    except json.JSONDecodeError:
+        x = float(button["x"])
+        y = float(button["y"])
+    except (KeyError, TypeError, ValueError):
         return False
-    return bool(
-        connected.get("ok")
-        and connected.get("connected")
-        and connected.get("serverConnected")
-        and connected.get("token") == token
-        and connected.get("port") == mcp_port
-    )
+    for event_type in ("mousePressed", "mouseReleased"):
+        _edge_cdp_call(
+            websocket_url,
+            "Input.dispatchMouseEvent",
+            {
+                "type": event_type,
+                "x": x,
+                "y": y,
+                "button": "left",
+                "clickCount": 1,
+            },
+        )
+    return True
 
 
 def _edge_cdp_eval(
