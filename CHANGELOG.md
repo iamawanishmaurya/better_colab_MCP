@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.10.1 - 2026-06-07
+
+- Fixed the Drive terminal wizard to use a separate copied Chrome profile directory for each selected Chrome profile, preventing stale anonymous Colab auth from leaking between profiles.
+- Added an interactive warning when a non-primary Chrome profile is selected; pressing Enter now falls back to the primary signed-in profile, while `use-non-primary` explicitly continues.
+- Documented the repeated `loginRequired: True` runtime-connect failure when selecting the non-primary `Default` profile.
+
 ## v0.10.0 - 2026-06-07
 
 - Added `colab-drive-terminal`, an interactive wizard for selecting a signed-in Chrome profile and launching a Drive-backed native Colab Ubuntu shell.

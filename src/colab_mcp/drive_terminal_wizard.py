@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 
 
@@ -62,6 +63,17 @@ def _clean_project_name(project_name: str) -> str:
     return clean_name or "project"
 
 
+def _path_slug(value: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", value.strip()).strip("-").lower()
+    return slug or "profile"
+
+
+def default_profile_copy_dir(profile: ChromeProfile) -> Path:
+    return DEFAULT_PROFILE_COPY_DIR.with_name(
+        DEFAULT_PROFILE_COPY_DIR.name + "-" + _path_slug(profile.directory)
+    )
+
+
 def choose_workspace(
     *,
     mode: str,
@@ -99,7 +111,7 @@ def build_bridge_command(
     repo: Path,
     profile: ChromeProfile,
     workspace: WorkspaceChoice,
-    profile_copy_dir: Path,
+    profile_copy_dir: Path | None,
     cdp_port: int,
     local_port: int,
     colab_port: int,
@@ -125,7 +137,7 @@ def build_bridge_command(
         "--browser-profile",
         profile.directory,
         "--browser-profile-copy-dir",
-        str(profile_copy_dir),
+        str(profile_copy_dir or default_profile_copy_dir(profile)),
         "--cdp-port",
         str(cdp_port),
         "--local-port",
@@ -160,6 +172,20 @@ def prompt_profile(profiles: list[ChromeProfile]) -> ChromeProfile:
         answer = input("Select Chrome profile: ").strip()
         for index, profile in enumerate(profiles, start=1):
             if answer in {str(index), profile.directory, profile.display_name}:
+                if not profile.is_primary:
+                    primary = next((item for item in profiles if item.is_primary), None)
+                    if primary is not None:
+                        print(
+                            "Warning: this profile is not Chrome's primary signed-in profile. "
+                            "Copied Colab auth may show Sign in."
+                        )
+                        confirm = input(
+                            "Press Enter to use "
+                            + primary.directory
+                            + ", or type use-non-primary to continue: "
+                        ).strip()
+                        if confirm != "use-non-primary":
+                            return primary
                 return profile
         print("Unknown profile selection.")
 
@@ -185,7 +211,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--workspace", choices=("interactive", "drive", "temp"), default="interactive")
     parser.add_argument("--allow-temp", action="store_true")
     parser.add_argument("--project", default="project")
-    parser.add_argument("--profile-copy-dir", type=Path, default=DEFAULT_PROFILE_COPY_DIR)
+    parser.add_argument("--profile-copy-dir", type=Path)
     parser.add_argument("--refresh-profile-copy", action="store_true")
     parser.add_argument("--cdp-port", type=int, default=9463)
     parser.add_argument("--local-port", type=int, default=8768)

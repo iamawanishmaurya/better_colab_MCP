@@ -1955,3 +1955,27 @@
 - Step name: Colab drive terminal command typo resolved
 - Action: Logged the user's `uv run colab-drive-termina` spawn error, verified `uv run colab-drive-terminal --help`, and documented the fix.
 - Result: The correct command `uv run colab-drive-terminal` is available; the typo problem and solution are recorded in `docs/problems/2026-06-07-colab-drive-terminal-command-typo.md` and `docs/solutions/colab-drive-terminal-command-typo.md`.
+
+## 2026-06-07T12:28:29+05:30 - Wizard login-required recurrence logged
+
+- Step name: Wizard login-required recurrence logged
+- Action: Logged the user's `Default` profile runtime connection failure, recognized it as a repeated copied-profile login-required problem, evaluated five distinct fixes, and selected profile-copy isolation plus non-primary profile warning.
+- Result: Problem and decision records were added at `docs/problems/2026-06-07-wizard-default-profile-login-required.md` and `docs/solutions/wizard-profile-copy-isolation-and-nonprimary-warning.md`.
+
+## 2026-06-07T12:29:38+05:30 - Wizard login fix failing tests confirmed
+
+- Step name: Wizard login fix failing tests confirmed
+- Action: Added tests for per-profile copied browser directories and interactive non-primary profile protection, then ran `uv run pytest tests/drive_terminal_wizard_test.py -q`.
+- Result: The focused test failed as expected because `default_profile_copy_dir` was not implemented yet.
+
+## 2026-06-07T12:30:57+05:30 - Wizard login fix implemented
+
+- Step name: Wizard login fix implemented
+- Action: Added per-profile default copied browser directories, added non-primary profile protection in the interactive picker, ran focused tests, full tests, Profile 32 and Default dry-runs, and a piped interactive dry-run selecting `Default`.
+- Result: `uv run pytest -q` passed with `91 passed, 1 warning`; dry-runs now use `/tmp/colab-mcp-drive-terminal-profile-copy-profile-32` and `/tmp/colab-mcp-drive-terminal-profile-copy-default`; interactive selection of `Default` with Enter now falls back to `Profile 32`.
+
+## 2026-06-07T12:32:33+05:30 - v0.10.1 validation passed
+
+- Step name: v0.10.1 validation passed
+- Action: Bumped package metadata to `v0.10.1`, refreshed `uv.lock`, updated `CHANGELOG.md`, ran `uv run pytest -q`, checked version strings, ran `git diff --check`, and verified the interactive non-primary fallback with `printf '2\n\n1\n' | uv run colab-drive-terminal --dry-run`.
+- Result: Full suite passed with `91 passed, 1 warning`; `pyproject.toml` and `uv.lock` report `0.10.1`; the dry-run selected `Profile 32` after warning about non-primary `Default`.

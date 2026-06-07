@@ -8,7 +8,9 @@ from colab_mcp.drive_terminal_wizard import (
     WorkspaceChoice,
     build_bridge_command,
     choose_workspace,
+    default_profile_copy_dir,
     load_chrome_profiles,
+    prompt_profile,
 )
 
 
@@ -89,6 +91,46 @@ def test_build_bridge_command_uses_shell_and_profile_copy(tmp_path):
     assert command[command.index("--browser-profile") + 1] == "Profile 32"
     assert command[command.index("--drive-folder") + 1] == "/content/drive/MyDrive/colab-terminal"
     assert command[command.index("--cwd") + 1] == "/content/drive/MyDrive/colab-terminal/projects/demo"
+
+
+def test_build_bridge_command_derives_default_copy_dir_per_profile(tmp_path):
+    profile = ChromeProfile("Profile 32", "Awanish", "Awanish Maurya", "cloudboosterawanish@gmail.com", True)
+    workspace = choose_workspace(mode="drive", project_name="demo", allow_temp=False)
+
+    command = build_bridge_command(
+        repo=tmp_path,
+        profile=profile,
+        workspace=workspace,
+        profile_copy_dir=None,
+        cdp_port=9463,
+        local_port=8768,
+        colab_port=7686,
+    )
+
+    assert command[command.index("--browser-profile-copy-dir") + 1] == str(default_profile_copy_dir(profile))
+    assert command[command.index("--browser-profile-copy-dir") + 1].endswith("-profile-32")
+
+
+def test_prompt_profile_defaults_back_to_primary_when_nonprimary_selected(monkeypatch):
+    primary = ChromeProfile("Profile 32", "Awanish", "Awanish Maurya", "cloudboosterawanish@gmail.com", True)
+    nonprimary = ChromeProfile("Default", "Your Chrome", "nothumanatall", "canbehumanagain@gmail.com", False)
+    answers = iter(["2", ""])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    selected = prompt_profile([primary, nonprimary])
+
+    assert selected == primary
+
+
+def test_prompt_profile_can_continue_with_nonprimary_after_explicit_confirmation(monkeypatch):
+    primary = ChromeProfile("Profile 32", "Awanish", "Awanish Maurya", "cloudboosterawanish@gmail.com", True)
+    nonprimary = ChromeProfile("Default", "Your Chrome", "nothumanatall", "canbehumanagain@gmail.com", False)
+    answers = iter(["2", "use-non-primary"])
+    monkeypatch.setattr("builtins.input", lambda _prompt: next(answers))
+
+    selected = prompt_profile([primary, nonprimary])
+
+    assert selected == nonprimary
 
 
 def test_parse_args_defaults_to_interactive_shell():
