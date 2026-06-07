@@ -1979,3 +1979,9 @@
 - Step name: v0.10.1 validation passed
 - Action: Bumped package metadata to `v0.10.1`, refreshed `uv.lock`, updated `CHANGELOG.md`, ran `uv run pytest -q`, checked version strings, ran `git diff --check`, and verified the interactive non-primary fallback with `printf '2\n\n1\n' | uv run colab-drive-terminal --dry-run`.
 - Result: Full suite passed with `91 passed, 1 warning`; `pyproject.toml` and `uv.lock` report `0.10.1`; the dry-run selected `Profile 32` after warning about non-primary `Default`.
+
+## 2026-06-07T12:38:38+05:30 - v0.10.1 release pushed
+
+- Step name: v0.10.1 release pushed
+- Action: Ran `git add -A`, confirmed staged status, committed `fix: isolate Colab terminal wizard profiles`, pushed `master` to `fork`, tagged `v0.10.1`, pushed tags, and verified remote refs.
+- Result: Commit `e5c3a07` is available on `fork/master`, tag `v0.10.1` points to `e5c3a07`, and the working tree is clean.
