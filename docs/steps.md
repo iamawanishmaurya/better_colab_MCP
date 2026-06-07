@@ -1,5 +1,149 @@
 # Steps
 
+## 2026-06-07T07:49:04+05:30 - Local mistake solution logs added
+
+- Step name: Local mistake solution logs added
+- Action: Added matching solution files for the wrong working directory, nonexistent helper search, missing `asyncio.run(main())`, patch path mismatch, and missing Playwright import problems.
+- Result: The solved local process mistakes now have solution logs with what failed, what worked, why it worked, and commands run.
+
+## 2026-06-07T07:47:20+05:30 - Headless token decision documented
+
+- Step name: Headless token decision documented
+- Action: Created `docs/solutions/headless-token-copy-vs-visible-mcp-approval.md` comparing headless token copy, copied profiles, visible approval, and real-profile CDP relaunch options.
+- Result: The decision log records that visible approval can connect MCP, but token copying into headless does not solve Colab login/runtime authentication; local proxy port `8768` never started.
+
+## 2026-06-07T07:45:42+05:30 - Runtime connect refusal logged
+
+- Step name: Runtime connect refusal logged
+- Action: Logged `docs/problems/2026-06-07-runtime-connect-urlopen-connection-refused.md` after the default-profile run connected MCP but failed during `connect_runtime`.
+- Result: The exact traceback, reproduction steps, environment, and first hypothesis are documented before changing strategy.
+
+## 2026-06-07T07:44:36+05:30 - Visible approval connected MCP
+
+- Step name: Visible approval connected MCP
+- Action: Used relative `ydotool mousemove` to place the cursor at the verified `Connect` button coordinate `1705,718`, clicked it, and checked the bridge log.
+- Result: The launcher advanced from `Connecting Colab MCP browser session...` to `Connected to Colab MCP. Browser connected=True`; runtime setup is still pending, and no localhost proxy listener exists yet.
+
+## 2026-06-07T07:42:10+05:30 - Corrected visible approval click attempted
+
+- Step name: Corrected visible approval click attempted
+- Action: Took `/tmp/colab-default-mcp-dialog.png`, inspected the visible Colab dialog, focused the Chrome window, and clicked the actual `Connect` button area around screen coordinate `1705,718`.
+- Result: The launcher log still shows `Connecting Colab MCP browser session...`, the tmux pane is alive, and local port `8768` is not listening; pointer activation still has not been verified.
+
+## 2026-06-07T07:41:09+05:30 - First visible approval click attempted
+
+- Step name: First visible approval click attempted
+- Action: Focused the visible `scratchpad - Colab` Chrome window on workspace 2 and sent a single OS-level left click near the expected dialog `Connect` button coordinates.
+- Result: The launcher log still shows `Connecting Colab MCP browser session...`, the tmux pane remains alive, and no local proxy listener exists yet; the click was not verified as successful, so the next step is visual inspection instead of repeated blind clicking.
+
+## 2026-06-07T07:40:09+05:30 - Default-profile bridge startup launched
+
+- Step name: Default-profile bridge startup launched
+- Action: Started tmux session `colab-opencode-ghosttown-default-tmux` with Ghost Town tmux mode, local port `8768`, Colab port `7685`, Chrome profile `Default`, and both browser headless mode and profile copying disabled.
+- Result: The tmux pane is alive under `uv`; this run should open the MCP approval dialog in the real signed-in Chrome profile instead of a copied/headless browser.
+
+## 2026-06-07T07:39:22+05:30 - Stale copied-profile browser closed
+
+- Step name: Stale copied-profile browser closed
+- Action: Stopped the Chrome root process created by the failed headed copied-profile run and checked listeners on ports `9461` and `33107`.
+- Result: Both the stale CDP listener and stale MCP proxy port are gone, so the next visible approval attempt will not target the old copied-profile dialog.
+
+## 2026-06-07T07:38:55+05:30 - Token-connect implementation inspected
+
+- Step name: Token-connect implementation inspected
+- Action: Read the Colab browser navigation and `_connect_colab_tab()` code in `src/colab_mcp/session.py` plus the matching `colabctl` connect JavaScript.
+- Result: The repository already implements the headless/CDP equivalent of pasting the token and calling `localColabMcpService.connect()`; the observed failure is not missing token automation, but that the CDP-controlled copied/headless browser is reported by Colab as `loginRequired=true`.
+
+## 2026-06-07T07:38:00+05:30 - Visible copied-profile dialog state checked
+
+- Step name: Visible copied-profile dialog state checked
+- Action: Checked tmux pane status, listeners on ports `33107`, `9461`, and `8768`, matching Chrome/MCP processes, and the visible copied-profile startup log.
+- Result: The tmux launcher has exited with status `1`, CDP port `9461` is still open from Chrome, but the local MCP server port `33107` from the visible dialog is no longer listening; clicking that stale dialog cannot complete the bridge.
+
+## 2026-06-07T07:37:11+05:30 - Visible MCP approval dialog identified
+
+- Step name: Visible MCP approval dialog identified
+- Action: Reviewed the user-provided screenshot of the authenticated Colab tab showing the "Connect to a local Colab MCP server" dialog with a proxy token and a `Connect` button.
+- Result: The active browser is waiting for the final local-MCP approval in the visible authenticated tab; copying the token into another headless/auth-rejected page is unlikely to solve runtime login, while accepting the dialog in the authenticated tab is the direct path to test.
+
+## 2026-06-07T07:34:27+05:30 - Headed copied-profile startup launched
+
+- Step name: Headed copied-profile startup launched
+- Action: Started tmux session `colab-opencode-ghosttown-visible-tmux` running `scripts/colab_opencode_localhost.py` with Ghost Town tmux mode, local port `8768`, Colab port `7685`, CDP port `9461`, and a headed copied Chrome profile at `/tmp/colab-mcp-opencode-visible-profile-copy`.
+- Result: The tmux pane is alive and the launcher has reached `Connecting Colab MCP browser session...`; no local proxy listener is available yet because setup has not completed.
+
+## 2026-06-07T07:33:48+05:30 - Headed copied-profile strategy preflight
+
+- Step name: Headed copied-profile strategy preflight
+- Action: Checked existing tmux sessions and confirmed ports `8768`, `7685`, and `9461` are not listening.
+- Result: No process is listening on the planned local proxy, Colab terminal, or CDP ports; a new headed copied-profile MCP startup can run without colliding with the existing sessions.
+
+## 2026-06-07T07:33:02+05:30 - Authenticated Chrome profile identified
+
+- Step name: Authenticated Chrome profile identified
+- Action: Listed Chrome profile directories, inspected running Chrome/CDP processes, and read Chrome `Local State` profile metadata without printing cookie values.
+- Result: The requested account is Chrome profile `Default` with GAIA name `nothumanatall` and user `canbehumanagain@gmail.com`; the failing CDP session on port `9458` is a headless copied profile at `/tmp/colab-mcp-opencode-profile-copy`, not the live headed profile.
+
+## 2026-06-07T07:32:12+05:30 - Runtime reconnect login blocker logged
+
+- Step name: Runtime reconnect login blocker logged
+- Action: Logged `docs/problems/2026-06-07-runtime-reconnect-login-required.md` after a helper-based MCP reconnect succeeded at the browser layer but failed at `connect_runtime`.
+- Result: The exact runtime-connect error shows `loginRequired=true` with a visible `Click to connect` state; runtime disconnection is now tied to an unauthenticated or auth-rejected controlled browser session.
+
+## 2026-06-07T07:31:03+05:30 - Setup cell run eligibility checked
+
+- Step name: Setup cell run eligibility checked
+- Action: Inspected the first cell's visibility, focus, trust, locks, run button, and kernel state through CDP.
+- Result: The cell is in the notebook, visible, focused, trusted, editable, unlocked, and non-empty, but the Colab page reports `kernelConnected=false`; this points to runtime disconnection as the root cause of the execution no-op.
+
+## 2026-06-07T07:30:26+05:30 - Page-native manual execution evaluated
+
+- Step name: Page-native manual execution evaluated
+- Action: Triggered the first setup cell through Colab's page-native `cell.manualExecute(false)` method and polled execution state plus output text through CDP.
+- Result: The method returned `ok=true` and resolved quickly, but the cell did not run: `running=false`, `pending=false`, `executionCount=0`, `hasOutput=false`, and no `COLAB_OPENCODE_RESULT` marker appeared.
+
+## 2026-06-07T07:29:23+05:30 - Setup cell constants checked
+
+- Step name: Setup cell constants checked
+- Action: Read the first Colab cell text through CDP and extracted generated setup constants.
+- Result: The target cell `XftDdgGmv-uD` is the intended Ghost Town tmux setup: `PORT = 7684`, `GHOSTTOWN_SESSION_MODE = 'tmux'`, `GHOSTTOWN_TMUX_SESSION = 'opencode'`, `DRIVE_PERSISTENCE = True`, and `REQUIRE_DRIVE = True`.
+
+## 2026-06-07T07:28:26+05:30 - Colab page execution API inspected
+
+- Step name: Colab page execution API inspected
+- Action: Used a direct Chrome DevTools Protocol `Runtime.evaluate` call against the scratchpad page target to inspect `window.colab.global.notebook`, the first cell, and notebook model methods.
+- Result: The setup cell `XftDdgGmv-uD` exists, is focused, has no execution count, and exposes cell-level methods including `manualExecute`, `getExecuteHandler`, `executeCellCommand`, and `prepareForExecution`; this identifies page-native alternatives to evaluate.
+
+## 2026-06-07T07:27:50+05:30 - Chrome CDP target discovery
+
+- Step name: Chrome CDP target discovery
+- Action: Queried `http://127.0.0.1:9458/json/version` and `/json/list`.
+- Result: Chrome DevTools is listening on `127.0.0.1:9458`; the active Colab scratchpad page target is `7005A5542E1CD6B9F79A96E8D89C343D`, with existing output iframes for ports including `7681` and `7682`.
+
+## 2026-06-07T07:27:23+05:30 - Playwright inspection problem logged
+
+- Step name: Playwright inspection problem logged
+- Action: Logged `docs/problems/2026-06-07-playwright-missing-in-uv-env.md` after a `uv run python` browser-inspection script failed to import `playwright.async_api`.
+- Result: The exact import error and fallback hypothesis are documented; live page inspection will use the Chrome DevTools Protocol directly instead of adding a new dependency.
+
+## 2026-06-07T07:26:48+05:30 - Launcher execution path reviewed
+
+- Step name: Launcher execution path reviewed
+- Action: Read `scripts/colab_opencode_localhost.py`, the older web-terminal launcher, and prior solution notes for cell execution hangs and Drive fallback behavior.
+- Result: `setup_opencode()` inserts a setup cell and immediately trusts `run_code_cell` output; the repeated failure is consistent with the cell remaining idle with no outputs, so the next strategy must inspect or change the execution trigger rather than rerunning the same tool call.
+
+## 2026-06-07T07:26:13+05:30 - Steps log patch path problem logged
+
+- Step name: Steps log patch path problem logged
+- Action: Logged `docs/problems/2026-06-07-steps-log-patch-wrong-workspace-root.md` after `apply_patch` targeted the top-level workspace `docs/steps.md` instead of the nested repository step log.
+- Result: The exact patch error, reproduction steps, environment, and first hypothesis are documented before correcting the patch path.
+
+## 2026-06-07T07:25:56+05:30 - OpenCode tmux startup continuation
+
+- Step name: OpenCode tmux startup continuation
+- Action: Confirmed the active repository path, checked git status, reviewed the current step log, and searched the launcher/tests/docs for `run_code_cell`, `COLAB_OPENCODE_RESULT`, Ghost Town, and tmux references.
+- Result: The command must run from `/home/astra/codex/Google-Colab/better_colab_MCP`; the worktree contains only current documentation/problem logs; the active blocker is now the repeated Colab setup-cell no-op rather than the original wrong working directory.
+
 ## 2026-06-06T12:51:29+05:30 - Clone replacement repository
 
 - Step name: Clone replacement repository
@@ -917,3 +1061,63 @@
 - Step name: Ghost Town tmux release pushed
 - Action: Amended the feature commit to include the commit-result log, tagged `v0.8.0`, pushed `master` to `fork`, pushed tags, and verified remote refs with `git ls-remote fork refs/heads/master refs/tags/v0.8.0`.
 - Result: Remote `fork/master` and tag `v0.8.0` both point to `4bc4c247d0772dd5c59817df22f58c0031cb0db2`.
+
+## 2026-06-07T07:11:21+05:30 - OpenCode localhost wrong directory logged
+
+- Step name: OpenCode localhost wrong directory logged
+- Action: Logged the user's failed startup attempt from `/home/astra`.
+- Result: Created `docs/problems/2026-06-07-opencode-localhost-wrong-working-directory.md`; the command must be run from `/home/astra/codex/Google-Colab/better_colab_MCP` or use an absolute script path.
+
+## 2026-06-07T07:12:16+05:30 - OpenCode localhost startup context checked
+
+- Step name: OpenCode localhost startup context checked
+- Action: Checked existing tmux sessions, local listeners, and the localhost script defaults before starting a new Ghost Town tmux-mode bridge.
+- Result: Found existing sessions `colab-opencode-ghosttown`, `colab-opencode-supervisor`, and `colab-opencode-web`; port `8766` and CDP port `9458` are already in use, so the new tmux-mode bridge will use alternate free ports instead of disrupting the existing session.
+
+## 2026-06-07T07:12:51+05:30 - Startup helper search problem logged
+
+- Step name: Startup helper search problem logged
+- Action: Attempted to search helper files for CDP/profile startup behavior.
+- Result: The search included nonexistent `scripts/colab_mcp_auto_connect.py` and failed with an `rg` file error; created `docs/problems/2026-06-07-startup-helper-search-nonexistent-file.md`.
+
+## 2026-06-07T07:13:27+05:30 - OpenCode Ghost Town tmux bridge started
+
+- Step name: OpenCode Ghost Town tmux bridge started
+- Action: Started `scripts/colab_opencode_localhost.py --terminal-backend ghosttown --ghosttown-session-mode tmux --ghosttown-tmux-session opencode --local-port 8767 --colab-port 7684` from the repository root inside tmux session `colab-opencode-ghosttown-tmux-start`.
+- Result: The tmux session was created and is writing bridge logs to `/tmp/colab-mcp-opencode-ghosttown-tmux-start.log` and MCP logs to `/tmp/colab-mcp-opencode-ghosttown-tmux-start-mcp.log`.
+
+## 2026-06-07T07:14:11+05:30 - OpenCode Ghost Town tmux setup marker failure logged
+
+- Step name: OpenCode Ghost Town tmux setup marker failure logged
+- Action: Polled the tmux-mode bridge startup logs and listener state.
+- Result: Colab MCP and runtime connected, but the setup parser failed with `RuntimeError: Opencode setup did not emit COLAB_OPENCODE_RESULT.` and no listener was bound on `8767`; created `docs/problems/2026-06-07-ghosttown-tmux-setup-missing-result-marker.md` with live token values redacted.
+
+## 2026-06-07T07:16:27+05:30 - Output query no-op logged
+
+- Step name: Output query no-op logged
+- Action: Tried to query Colab cell outputs through an inline Python MCP client.
+- Result: The script exited with code `0` and no output because `main()` was defined but not called; created `docs/problems/2026-06-07-output-query-main-not-called.md`.
+
+## 2026-06-07T07:17:35+05:30 - OpenCode setup cell idle state found
+
+- Step name: OpenCode setup cell idle state found
+- Action: Queried Colab cells and cell status through MCP after the bridge failed to parse setup output.
+- Result: Found the newly inserted setup cell `XftDdgGmv-uD` at index `0`; it contains `PORT = 7684` and `GHOSTTOWN_SESSION_MODE = 'tmux'`, but its execution count is null and state is `idle`, so it was inserted but not executed.
+
+## 2026-06-07T07:18:26+05:30 - OpenCode setup marker failure repeated
+
+- Step name: OpenCode setup marker failure repeated
+- Action: Called `run_code_cell` directly for setup cell `XftDdgGmv-uD` and attempted to parse the returned and stored outputs.
+- Result: The command returned no output, the stored cell output remained empty, and parsing raised `RuntimeError('Opencode setup did not emit COLAB_OPENCODE_RESULT.')` again; stopping this retry path and evaluating distinct alternatives.
+
+## 2026-06-07T07:19:31+05:30 - OpenCode run cell range alternative evaluated
+
+- Step name: OpenCode run cell range alternative evaluated
+- Action: Tested the distinct `run_cell_range` MCP wrapper on only cell index `0` with outputs enabled.
+- Result: The wrapper returned `status: success`, but execution count stayed null and outputs stayed empty for cell `XftDdgGmv-uD`; this rules out `run_cell_range` as a startup path for this session.
+
+## 2026-06-07T07:22:43+05:30 - Browser-control execution alternatives evaluated
+
+- Step name: Browser-control execution alternatives evaluated
+- Action: Attached Playwright to Chrome CDP port `9458`, inspected the Colab page DOM, clicked the first `colab-run-button`, then focused cell `0` and sent `Ctrl+Enter`.
+- Result: The Colab page and focused setup cell were found, but both browser actions left cell `0` output empty for the polling window; browser click and keyboard execution are not reliable startup paths in this session.
