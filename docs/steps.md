@@ -1985,3 +1985,9 @@
 - Step name: v0.10.1 release pushed
 - Action: Ran `git add -A`, confirmed staged status, committed `fix: isolate Colab terminal wizard profiles`, pushed `master` to `fork`, tagged `v0.10.1`, pushed tags, and verified remote refs.
 - Result: Commit `e5c3a07` is available on `fork/master`, tag `v0.10.1` points to `e5c3a07`, and the working tree is clean.
+
+## 2026-06-07T12:53:06+05:30 - Global Colab drive terminal launcher installed
+
+- Step name: Global Colab drive terminal launcher installed
+- Action: Logged the `uv run colab-drive-terminal` failure from `~`, created `/home/astra/.local/bin/colab-drive-terminal`, made it executable, and tested both `/home/astra/.local/bin/colab-drive-terminal --help` and `uv run colab-drive-terminal --help` from `/home/astra`.
+- Result: The command now works from outside the repository; problem and solution docs were added at `docs/problems/2026-06-07-global-colab-drive-terminal-command-missing.md` and `docs/solutions/global-colab-drive-terminal-launcher.md`.
