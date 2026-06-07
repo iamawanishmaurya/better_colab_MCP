@@ -89,3 +89,20 @@ def test_build_bridge_command_uses_shell_and_profile_copy(tmp_path):
     assert command[command.index("--browser-profile") + 1] == "Profile 32"
     assert command[command.index("--drive-folder") + 1] == "/content/drive/MyDrive/colab-terminal"
     assert command[command.index("--cwd") + 1] == "/content/drive/MyDrive/colab-terminal/projects/demo"
+
+
+def test_parse_args_defaults_to_interactive_shell():
+    from colab_mcp.drive_terminal_wizard import parse_args
+
+    args = parse_args([])
+
+    assert args.workspace == "interactive"
+    assert args.project == "project"
+    assert args.local_port == 8768
+    assert args.colab_port == 7686
+
+
+def test_script_entrypoint_imports_packaged_main():
+    wrapper = Path("scripts/colab_drive_terminal.py").read_text(encoding="utf-8")
+
+    assert "from colab_mcp.drive_terminal_wizard import main" in wrapper

@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import subprocess
 
 
 DEFAULT_DRIVE_ROOT = "/content/drive/MyDrive/colab-terminal"
 DEFAULT_TEMP_ROOT = "/content/colab-terminal"
 DEFAULT_PROFILE_COPY_DIR = Path("/tmp/colab-mcp-drive-terminal-profile-copy")
+DEFAULT_REPO = Path(__file__).resolve().parents[2]
 
 
 @dataclass(frozen=True)
@@ -143,3 +146,100 @@ def build_bridge_command(
     else:
         command.extend(["--no-drive-persistence", "--no-require-drive"])
     return command
+
+
+def prompt_profile(profiles: list[ChromeProfile]) -> ChromeProfile:
+    if not profiles:
+        raise RuntimeError("No Chrome profiles were found in Local State.")
+    print("Chrome profiles:")
+    for index, profile in enumerate(profiles, start=1):
+        primary = " primary" if profile.is_primary else ""
+        account = profile.user_name or profile.gaia_name or "no account metadata"
+        print(f"{index}. {profile.directory} - {profile.display_name} - {account}{primary}")
+    while True:
+        answer = input("Select Chrome profile: ").strip()
+        for index, profile in enumerate(profiles, start=1):
+            if answer in {str(index), profile.directory, profile.display_name}:
+                return profile
+        print("Unknown profile selection.")
+
+
+def prompt_workspace(project_name: str) -> WorkspaceChoice:
+    print("Workspace modes:")
+    print("1. Drive workspace recommended")
+    print("2. Temporary /content workspace")
+    answer = input("Select workspace mode [1]: ").strip() or "1"
+    if answer == "1":
+        return choose_workspace(mode="drive", project_name=project_name, allow_temp=False)
+    if answer == "2":
+        print("Temporary /content mode is not durable. Runtime reset can delete files and sessions.")
+        confirm = input("Type allow-temp to continue: ").strip()
+        return choose_workspace(mode="temp", project_name=project_name, allow_temp=confirm == "allow-temp")
+    raise ValueError("Unknown workspace mode selection")
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Open a Drive-backed Colab terminal through MCP.")
+    parser.add_argument("--chrome-user-data-dir", type=Path, default=default_chrome_user_data_dir())
+    parser.add_argument("--profile")
+    parser.add_argument("--workspace", choices=("interactive", "drive", "temp"), default="interactive")
+    parser.add_argument("--allow-temp", action="store_true")
+    parser.add_argument("--project", default="project")
+    parser.add_argument("--profile-copy-dir", type=Path, default=DEFAULT_PROFILE_COPY_DIR)
+    parser.add_argument("--refresh-profile-copy", action="store_true")
+    parser.add_argument("--cdp-port", type=int, default=9463)
+    parser.add_argument("--local-port", type=int, default=8768)
+    parser.add_argument("--colab-port", type=int, default=7686)
+    parser.add_argument("--browser-headless", action="store_true")
+    parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--repo", type=Path, default=DEFAULT_REPO)
+    args = parser.parse_args(argv)
+    if args.local_port <= 0 or args.local_port > 65535:
+        parser.error("--local-port must be between 1 and 65535")
+    if args.colab_port <= 0 or args.colab_port > 65535:
+        parser.error("--colab-port must be between 1 and 65535")
+    if args.cdp_port <= 0 or args.cdp_port > 65535:
+        parser.error("--cdp-port must be between 1 and 65535")
+    return args
+
+
+def resolve_profile(profiles: list[ChromeProfile], selected: str | None) -> ChromeProfile:
+    if selected is None:
+        return prompt_profile(profiles)
+    for profile in profiles:
+        if selected in {profile.directory, profile.display_name, profile.user_name, profile.gaia_name}:
+            return profile
+    raise RuntimeError(f"Chrome profile not found: {selected}")
+
+
+def run_wizard(args: argparse.Namespace) -> int:
+    profiles = load_chrome_profiles(args.chrome_user_data_dir)
+    profile = resolve_profile(profiles, args.profile)
+    if args.workspace == "interactive":
+        workspace = prompt_workspace(args.project)
+    else:
+        workspace = choose_workspace(
+            mode=args.workspace,
+            project_name=args.project,
+            allow_temp=args.allow_temp,
+        )
+    command = build_bridge_command(
+        repo=args.repo,
+        profile=profile,
+        workspace=workspace,
+        profile_copy_dir=args.profile_copy_dir,
+        cdp_port=args.cdp_port,
+        local_port=args.local_port,
+        colab_port=args.colab_port,
+        refresh_profile_copy=args.refresh_profile_copy,
+        browser_headless=args.browser_headless,
+    )
+    print("Launching Colab terminal:")
+    print(" ".join(command))
+    if args.dry_run:
+        return 0
+    return subprocess.call(command, cwd=args.repo)
+
+
+def main(argv: list[str] | None = None) -> int:
+    return run_wizard(parse_args(argv))

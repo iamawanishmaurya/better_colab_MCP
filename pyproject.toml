@@ -25,6 +25,7 @@ dependencies = [
 [project.scripts]
 colab-mcp = "colab_mcp:main"
 colabctl = "colab_mcp.colabctl:main"
+colab-drive-terminal = "colab_mcp.drive_terminal_wizard:main"
 colab-mcp-test = "colab_mcp.test_runner:main"
 
 [build-system]

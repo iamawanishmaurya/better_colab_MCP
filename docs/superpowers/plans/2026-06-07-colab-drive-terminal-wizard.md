@@ -464,7 +464,7 @@ Expected: status shows the new wizard module and tests staged before commit; pus
 - Modify: `pyproject.toml`
 - Modify: `tests/drive_terminal_wizard_test.py`
 
-- [ ] **Step 1: Write failing CLI tests**
+- [x] **Step 1: Write failing CLI tests**
 
 Append to `tests/drive_terminal_wizard_test.py`:
 
@@ -486,7 +486,7 @@ def test_script_entrypoint_imports_packaged_main():
     assert "from colab_mcp.drive_terminal_wizard import main" in wrapper
 ```
 
-- [ ] **Step 2: Run tests and confirm failure**
+- [x] **Step 2: Run tests and confirm failure**
 
 Run:
 
@@ -496,7 +496,7 @@ uv run pytest tests/drive_terminal_wizard_test.py -q
 
 Expected: `parse_args` and wrapper file checks fail.
 
-- [ ] **Step 3: Add prompt helpers and CLI execution**
+- [x] **Step 3: Add prompt helpers and CLI execution**
 
 Append to `src/colab_mcp/drive_terminal_wizard.py`:
 
@@ -587,7 +587,7 @@ def main(argv: list[str] | None = None) -> int:
     return run_wizard(parse_args(argv))
 ```
 
-- [ ] **Step 4: Add script wrapper and console script**
+- [x] **Step 4: Add script wrapper and console script**
 
 Create `scripts/colab_drive_terminal.py`:
 
@@ -608,7 +608,7 @@ Add to `[project.scripts]` in `pyproject.toml`:
 colab-drive-terminal = "colab_mcp.drive_terminal_wizard:main"
 ```
 
-- [ ] **Step 5: Run focused tests**
+- [x] **Step 5: Run focused tests**
 
 Run:
 
