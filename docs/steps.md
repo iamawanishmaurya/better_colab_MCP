@@ -1817,3 +1817,9 @@
 - Step name: Test suite passed before spec commit
 - Action: Ran `uv run pytest -q` before committing the pending launcher, documentation, version bump, and wizard design spec.
 - Result: The test suite passed with `79 passed, 1 warning`.
+
+## 2026-06-07T11:23:33+05:30 - v0.9.1 release pushed
+
+- Step name: v0.9.1 release pushed
+- Action: Ran `git add -A`, confirmed staged status, committed `feat: add Drive terminal launcher`, tagged `v0.9.1`, pushed `master` to `fork`, and pushed tags to `fork`.
+- Result: Commit `3e5f90a` and tag `v0.9.1` are available on `https://github.com/iamawanishmaurya/better_colab_MCP.git`.
